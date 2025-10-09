@@ -1,3 +1,6 @@
+# Local data symlinks
+data_local/
+
 # Ignore any specific bash scripts
 *.sh
 
