@@ -39,6 +39,9 @@ class ModelSelection(str, Enum):
     PLM = 'plm'
     QWEN = 'qwen'
 
+IMAGE_TOKEN_IDS = {
+    ModelSelection.QWEN: 151655
+}
 
 class Config:
     """Config class for both yaml and cli arguments."""
