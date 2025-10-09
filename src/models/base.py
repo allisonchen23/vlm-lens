@@ -144,8 +144,8 @@ class ModelBase(ABC):
             # Insert the tensor into the table
             cursor.execute(f"""
                 INSERT INTO {self.config.DB_TABLE_NAME}
-                (name, architecture, image_path, image_id, prompt, label, layer, pooling_method, tensor_dim, tensor)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                (name, architecture, image_path, image_id, prompt, label, layer, pooling_method, tensor_dim, tensor_shape, tensor)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """, (
                 self.model_path,
                 self.config.architecture.value,
@@ -154,8 +154,9 @@ class ModelBase(ABC):
                 prompt,
                 label,
                 name,
-                self.config.pooling_method if hasattr(self.config, 'pooling_method') else None,
+                self.config.pooling_method if hasattr(self.config, 'pooling_method') and hasattr(output, self.config.pooling_method) else None,
                 output_dim,
+                str(final_output.shape),
                 tensor_blob.getvalue())
             )
 
@@ -266,6 +267,7 @@ class ModelBase(ABC):
                     layer TEXT NOT NULL,
                     pooling_method TEXT NULL,
                     tensor_dim INTEGER NOT NULL,
+                    tensor_shape TEXT NOT NULL,
                     tensor BLOB NOT NULL
                 );
             """
@@ -375,7 +377,7 @@ class ModelBase(ABC):
                     'image': self.config.NO_IMG_PROMPT,  # TODO: Check this?
                     'prompt': self.config.prompt,
                     'data': self._generate_processor_output(
-                        prompt=self._generate_prompt(),
+                        prompt=self._generate_prompt(prompt=None),
                         img_path=None
                     )
                 }
@@ -407,7 +409,8 @@ class ModelBase(ABC):
             else:
                 return len(self.config.image_paths)
 
-    def run(self) -> None:
+    def run(self,
+            save_tokens=False) -> None:
         """Get the hidden states from the model and saving them."""
         # let's first initialize a database connection
         self._initialize_db()
@@ -421,6 +424,46 @@ class ModelBase(ABC):
 
         # then run everything else
         for item in tqdm.tqdm(self._load_input_data(), desc='Running forward hooks on data', total=self._data_size):
+            # Save input IDs
+            if save_tokens:
+
+                image_path, prompt = item['image'], item['prompt']
+                label = item.get('label', None)
+                row_id = item.get('row_id', None)
+                # Convert image path to absolute path
+                if isinstance(image_path, str) and image_path != self.config.NO_IMG_PROMPT:
+                    image_path = os.path.abspath(image_path)
+
+                    # this image path should already exist, error out if someone isn't
+                    # properly providing an image path
+                    assert os.path.exists(image_path)
+                # Get tokens and save as binary blob
+                tokens = item['data']['input_ids']
+                tensor_blob = io.BytesIO()
+                torch.save(tokens, tensor_blob)
+
+                # Insert the tensor into the table
+                cursor = self.connection.cursor()
+                cursor.execute(f"""
+                    INSERT INTO {self.config.DB_TABLE_NAME}
+                    (name, architecture, image_path, image_id, prompt, label, layer, pooling_method, tensor_dim, tensor_shape, tensor)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """, (
+                    self.model_path,
+                    self.config.architecture.value,
+                    image_path if isinstance(image_path, str) else None,
+                    row_id,
+                    prompt,
+                    label,
+                    "input_ids", # layer name
+                    None, # pooling
+                    len(tokens), # number of tokens
+                    str(tokens.shape),
+                    tensor_blob.getvalue())
+                )
+
+            self.connection.commit()
+            # Run item through model
             self._hook_and_eval(item)
 
         # then output peak memory usage, if using cuda

@@ -1,0 +1,344 @@
+import io
+import numpy as np
+import sqlite3
+import torch
+
+def cosine_similarity_numpy(a, b):
+    """Calculate cosine similarity between two vectors using numpy with robust error handling."""
+    # Check for NaN or infinite values
+    if not (np.isfinite(a).all() and np.isfinite(b).all()):
+        print("Warning: NaN or infinite values detected in tensors")
+        return 0.0
+
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+
+    # Handle zero vectors or invalid norms
+    if norm_a == 0 or norm_b == 0 or not (np.isfinite(norm_a) and np.isfinite(norm_b)):
+        return 0.0
+
+    dot_product = np.dot(a, b)
+
+    # Check if dot product is valid
+    if not np.isfinite(dot_product):
+        print("Warning: Invalid dot product")
+        return 0.0
+
+    return dot_product / (norm_a * norm_b)
+
+def extract_tensor_from_object(tensor_obj):
+    """Extract actual tensor data from HuggingFace model outputs or other objects."""
+    if hasattr(tensor_obj, 'last_hidden_state'):
+        # HuggingFace model output - extract the main tensor
+        return tensor_obj.last_hidden_state
+    elif hasattr(tensor_obj, 'pooler_output'):
+        # Use pooled output if available
+        return tensor_obj.pooler_output
+    elif hasattr(tensor_obj, 'hidden_states'):
+        # Use hidden states
+        return tensor_obj.hidden_states
+    elif torch.is_tensor(tensor_obj):
+        # Already a tensor
+        return tensor_obj
+    else:
+        # Try to find the first tensor attribute
+        for attr_name in dir(tensor_obj):
+            if not attr_name.startswith('_'):
+                try:
+                    attr_value = getattr(tensor_obj, attr_name)
+                    if torch.is_tensor(attr_value):
+                        print(f"Using attribute '{attr_name}' from {type(tensor_obj).__name__}")
+                        return attr_value
+                except:
+                    continue
+
+        print(f"Could not find tensor data in {type(tensor_obj).__name__}")
+        return None
+
+def get_all_embeddings(db_path="output/llava.db", device='cpu'):
+    """
+    Retrieve all embeddings from the database using PyTorch tensor deserialization.
+
+    Args:
+        db_path: Path to the SQLite database
+        device: PyTorch device for tensor loading ('cpu', 'cuda', etc.)
+
+    Returns:
+        List of tuples: (layer, tensor_data, label)
+    """
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
+
+    # Direct SQL query to get layer, tensor, and label
+    cursor.execute("SELECT layer, tensor, label FROM tensors")
+    results = cursor.fetchall()
+
+    # Close the connection
+    connection.close()
+
+    embeddings_data = []
+
+    for row_id, (layer, tensor_bytes, label) in enumerate(results):
+        try:
+            # Use PyTorch to load tensor from BytesIO with weights_only=False
+            tensor_obj = torch.load(io.BytesIO(tensor_bytes), map_location=device, weights_only=False)
+
+            # Extract actual tensor from object
+            tensor = extract_tensor_from_object(tensor_obj)
+            if tensor is None:
+                continue
+
+            # Convert to numpy for analysis
+            if tensor.requires_grad:
+                tensor_np = tensor.detach().cpu().numpy()
+            else:
+                tensor_np = tensor.cpu().numpy()
+
+            embeddings_data.append((layer, tensor_np, label))
+
+        except Exception as e:
+            print(f"Warning: Could not deserialize tensor at row {row_id}: {e}")
+            continue
+
+    return embeddings_data
+
+def get_embeddings_by_layer(db_path="output/llava.db", layer_name=None, device='cpu'):
+    """
+    Retrieve embeddings for a specific layer from the database.
+
+    Args:
+        db_path: Path to the SQLite database
+        layer_name: Name of the layer to filter by
+        device: PyTorch device for tensor loading
+
+    Returns:
+        List of tuples: (layer, tensor_data, label)
+    """
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
+
+    if layer_name:
+        cursor.execute("SELECT layer, tensor, label FROM tensors WHERE layer = ?", (layer_name,))
+    else:
+        cursor.execute("SELECT layer, tensor, label FROM tensors")
+
+    results = cursor.fetchall()
+    connection.close()
+
+    embeddings_data = []
+
+    for row_id, (layer, tensor_bytes, label) in enumerate(results):
+        try:
+            tensor_obj = torch.load(io.BytesIO(tensor_bytes), map_location=device, weights_only=False)
+
+            # Extract actual tensor from object
+            tensor = extract_tensor_from_object(tensor_obj)
+            if tensor is None:
+                continue
+
+            # Convert to numpy for analysis
+            if tensor.requires_grad:
+                tensor_np = tensor.detach().cpu().numpy()
+            else:
+                tensor_np = tensor.cpu().numpy()
+
+            embeddings_data.append((layer, tensor_np, label))
+
+        except Exception as e:
+            print(f"Warning: Could not deserialize tensor at row {row_id}: {e}")
+            continue
+
+    return embeddings_data
+
+def get_layer_names(db_path="output/llava.db"):
+    """
+    Get all unique layer names from the database.
+
+    Args:
+        db_path: Path to the SQLite database
+
+    Returns:
+        List of unique layer names
+    """
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT DISTINCT layer FROM tensors")
+    layers = [row[0] for row in cursor.fetchall()]
+
+    connection.close()
+    return layers
+
+def analyze_layer_similarity(db_path="output/llava.db", layer_name=None, device='cpu'):
+    """
+    Analyze cosine similarity between embeddings within a specific layer.
+
+    Args:
+        db_path: Path to the SQLite database
+        layer_name: Specific layer to analyze (if None, analyzes all layers)
+        device: PyTorch device for tensor loading
+
+    Returns:
+        Dictionary mapping layer names to similarity results
+    """
+    if layer_name:
+        embeddings = get_embeddings_by_layer(db_path, layer_name, device)
+        layer_groups = {layer_name: embeddings}
+    else:
+        # Get all embeddings and group by layer
+        all_embeddings = get_all_embeddings(db_path, device)
+        layer_groups = {}
+        for layer, tensor, label in all_embeddings:
+            if layer not in layer_groups:
+                layer_groups[layer] = []
+            layer_groups[layer].append((layer, tensor, label))
+
+    similarity_results = {}
+
+    for layer, embeddings in layer_groups.items():
+        if len(embeddings) < 2:
+            print(f"Skipping layer '{layer}': only {len(embeddings)} embedding(s)")
+            continue
+
+        print(f"\n=== Cosine Similarity Analysis for Layer: {layer} ===")
+
+        # Extract tensors and labels
+        tensors = [tensor.flatten() for _, tensor, _ in embeddings]
+        labels = [label for _, _, label in embeddings]
+
+
+        # Debug: Check tensor validity
+        print("Tensor analysis:")
+        for i, tensor in enumerate(tensors):
+
+            norm = np.linalg.norm(tensor)
+            has_nan = np.isnan(tensor).any()
+            has_inf = np.isinf(tensor).any()
+            min_val = np.min(tensor) if len(tensor) > 0 else 0
+            max_val = np.max(tensor) if len(tensor) > 0 else 0
+
+            label_str = labels[i] if labels[i] else "No label"
+            print(f"  Tensor {i} ({label_str}): norm = {norm:.6f}")
+            print(f"    Shape: {tensor.shape}, Range: [{min_val:.6f}, {max_val:.6f}]")
+            print(f"    has_nan: {has_nan}, has_inf: {has_inf}")
+
+            if norm == 0:
+                print(f"    WARNING: Tensor {i} is a zero vector!")
+            if has_nan:
+                print(f"    WARNING: Tensor {i} contains NaN values!")
+            if has_inf:
+                print(f"    WARNING: Tensor {i} contains infinite values!")
+
+        layer_similarities = []
+
+        # Calculate all pairwise similarities
+        for i in range(len(tensors)):
+            for j in range(i + 1, len(tensors)):
+                similarity = cosine_similarity_numpy(tensors[i], tensors[j])
+
+                label1 = labels[i] if labels[i] else f"Tensor_{i}"
+                label2 = labels[j] if labels[j] else f"Tensor_{j}"
+
+                result = {
+                    'tensor1_idx': i,
+                    'tensor2_idx': j,
+                    'label1': label1,
+                    'label2': label2,
+                    'similarity': similarity
+                }
+                layer_similarities.append(result)
+
+                print(f"Tensor {i} vs Tensor {j}: {similarity:.4f}")
+                print(f"  {label1} vs {label2}")
+
+        similarity_results[layer] = layer_similarities
+
+    return similarity_results
+
+def get_database_info(db_path="output/llava.db"):
+    """
+    Get basic information about the database contents.
+
+    Args:
+        db_path: Path to the SQLite database
+
+    Returns:
+        Dictionary with database statistics
+    """
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
+
+    # Get total number of tensors
+    cursor.execute("SELECT COUNT(*) FROM tensors")
+    total_tensors = cursor.fetchone()[0]
+
+    # Get unique layers
+    cursor.execute("SELECT layer, COUNT(*) FROM tensors GROUP BY layer")
+    layer_counts = dict(cursor.fetchall())
+
+    # Get unique labels
+    cursor.execute("SELECT label, COUNT(*) FROM tensors WHERE label IS NOT NULL GROUP BY label")
+    label_counts = dict(cursor.fetchall())
+
+    connection.close()
+
+    return {
+        'total_tensors': total_tensors,
+        'layer_counts': layer_counts,
+        'label_counts': label_counts,
+        'unique_layers': list(layer_counts.keys())
+    }
+
+def extract_features_and_targets(db_path="output/llava.db", probe_layer=None, device='cpu'):
+    """
+    Extract features and targets for machine learning, following VLM-Lens pattern.
+
+    Args:
+        db_path: Path to the SQLite database
+        probe_layer: Specific layer to extract (if None, extracts all)
+        device: PyTorch device for tensor loading
+
+    Returns:
+        Tuple: (features, targets, label_to_idx)
+    """
+    connection = sqlite3.connect(db_path)
+    cursor = connection.cursor()
+
+    cursor.execute("SELECT layer, tensor, label FROM tensors")
+    results = cursor.fetchall()
+    connection.close()
+
+    # Gather unique class labels
+    all_labels = set([result[2] for result in results if result[2] is not None])
+    label_to_idx = {label: i for i, label in enumerate(all_labels)}
+
+    features, targets = [], []
+
+    for layer, tensor_bytes, label in results:
+        if (probe_layer and layer == probe_layer) or (not probe_layer):
+            try:
+                tensor_obj = torch.load(io.BytesIO(tensor_bytes), map_location=device, weights_only=False)
+
+                # Extract actual tensor from object
+                tensor = extract_tensor_from_object(tensor_obj)
+                if tensor is None:
+                    continue
+
+                # Convert to numpy
+                if tensor.requires_grad:
+                    tensor_np = tensor.detach().cpu().numpy()
+                else:
+                    tensor_np = tensor.cpu().numpy()
+
+                # Flatten for ML
+                feature_vector = tensor_np.flatten()
+
+                if label is not None:
+                    features.append(feature_vector)
+                    targets.append(label_to_idx[label])
+
+            except Exception as e:
+                print(f"Warning: Could not process tensor for layer {layer}: {e}")
+                continue
+
+    return np.array(features), np.array(targets), label_to_idx
