@@ -34,7 +34,6 @@ def cosine_similarity_numpy(a, b):
 
         return dot_product / (norm_a * norm_b)
     elif len(a.shape) == 2:
-        print('matrices')
         norm_a = np.linalg.norm(a, axis=1, keepdims=True)
         norm_b = np.linalg.norm(b, axis=1, keepdims=True)
         if np.sum(norm_a) == 0 or np.sum(norm_b) == 0 or not (np.isfinite(norm_a).all() and np.isfinite(norm_b).all()):
@@ -44,6 +43,8 @@ def cosine_similarity_numpy(a, b):
         normalized_b = b / norm_b
 
         return np.dot(normalized_a, normalized_b.T)
+    else:
+        raise ValueError("Cosine similarity not supported for {}-dimensional matrices".format(len(a.shape)))
 
 
 
@@ -174,6 +175,15 @@ def get_embeddings_by_layer(db_path="output/llava.db", layer_name=None, device='
             continue
 
     return embeddings_data
+
+def unwrap_embeddings(embeddings,
+                      idx=1):
+    """
+    From output of `get_embeddings_by_layer()` extract only the embeddings
+    idx = 0 gives layer; 1 gives embeddings; 2 gives label
+    """
+
+    return np.squeeze(np.array(tuple(map(list, zip(*embeddings)))[idx]))
 
 def get_layer_names(db_path="output/llava.db"):
     """
@@ -315,8 +325,8 @@ def get_database_info(db_path="output/llava.db"):
     }
 
 def extract_visual_embeddings(input_ids,
-                          llm_embeddings,
-                          image_token_id):
+                              llm_embeddings,
+                              image_token_id):
     """
     Given input IDs and LLM embeddings,
         return tokens that are of the image representation; text tokens become 0
@@ -355,7 +365,7 @@ def compute_mean_embeddings(embeddings,
     # Get denominator for mean
     assert len(embeddings.shape) == 3
     if n_embeddings is None:
-        n_embeddings = embeddings.shape[1] # Number of tokens
+        n_embeddings = np.full((embeddings.shape[0]), embeddings.shape[1]) # Number of tokens
 
     # Compute mean
     mean_embeddings = np.sum(embeddings, axis=1) / n_embeddings[..., None]
