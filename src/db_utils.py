@@ -197,7 +197,7 @@ def get_layer_names(db_path="output/llava.db"):
 def analyze_layer_similarity(db_path="output/llava.db", layer_name=None, device='cpu'):
     """
     Analyze cosine similarity between embeddings within a specific layer.
-
+    (albeit a bit inefficiently)
     Args:
         db_path: Path to the SQLite database
         layer_name: Specific layer to analyze (if None, analyzes all layers)
@@ -313,6 +313,59 @@ def get_database_info(db_path="output/llava.db"):
         'label_counts': label_counts,
         'unique_layers': list(layer_counts.keys())
     }
+
+def extract_visual_embeddings(input_ids,
+                          llm_embeddings,
+                          image_token_id):
+    """
+    Given input IDs and LLM embeddings,
+        return tokens that are of the image representation; text tokens become 0
+
+    Arg(s):
+        input_ids : B x T np.array
+        llm_embeddings : B x T x D np. array
+        image_token_id : int
+
+    Returns:
+        visual_tokens, n_visual_tokens : B x T x D np.array, B-dim integer np.array
+    """
+
+    # Check that Batch and Token dimensions match
+    assert input_ids.shape[0] == llm_embeddings.shape[0]
+    assert input_ids.shape[1] == llm_embeddings.shape[1]
+    assert len(input_ids.shape) == 2
+    assert len(llm_embeddings.shape) == 3
+
+    # Mask where token corresponds to image
+    mask = np.where(input_ids == image_token_id, 1, 0)
+    n_visual_embs = np.sum(mask, axis=1)
+    visual_embs = llm_embeddings * mask[..., None]
+    return visual_embs, n_visual_embs
+
+def compute_mean_embeddings(embeddings,
+                            n_embeddings=None):
+    """
+    Compute mean embedding for each element in the batch
+
+    Arg(s):
+        embeddings : B x T x D
+        n_embeddings : int or None (if int, divide by n_embeddings instead of T)
+    """
+
+    # Get denominator for mean
+    assert len(embeddings.shape) == 3
+    if n_embeddings is None:
+        n_embeddings = embeddings.shape[1] # Number of tokens
+
+    # Compute mean
+    mean_embeddings = np.sum(embeddings, axis=1) / n_embeddings[..., None]
+
+    # Shape assertions
+    assert len(mean_embeddings.shape) == 2
+    assert mean_embeddings.shape[0] == embeddings.shape[0]
+    assert mean_embeddings.shape[1] == embeddings.shape[2]
+
+    return mean_embeddings
 
 def extract_features_and_targets(db_path="output/llava.db", probe_layer=None, device='cpu'):
     """
