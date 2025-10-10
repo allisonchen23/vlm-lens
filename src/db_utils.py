@@ -4,27 +4,48 @@ import sqlite3
 import torch
 
 def cosine_similarity_numpy(a, b):
-    """Calculate cosine similarity between two vectors using numpy with robust error handling."""
+    """Calculate cosine similarity between two vectors or matrices using numpy with robust error handling.
+
+    Arg(s):
+        a : D-dim np.array or B x D np.array
+        b : D-dim np.array or B x D np.array
+
+    Returns:
+        int (if a and b are 1D) or B x B np.array (if a and b are 2D)
+    """
+    assert a.shape == b.shape
     # Check for NaN or infinite values
     if not (np.isfinite(a).all() and np.isfinite(b).all()):
         print("Warning: NaN or infinite values detected in tensors")
         return 0.0
+    if len(a.shape) == 1:
+        norm_a = np.linalg.norm(a)
+        norm_b = np.linalg.norm(b)
 
-    norm_a = np.linalg.norm(a)
-    norm_b = np.linalg.norm(b)
+        # Handle zero vectors or invalid norms
+        if norm_a == 0 or norm_b == 0 or not (np.isfinite(norm_a).all() and np.isfinite(norm_b).all()):
+            return 0.0
+        dot_product = np.dot(a, b.T)
 
-    # Handle zero vectors or invalid norms
-    if norm_a == 0 or norm_b == 0 or not (np.isfinite(norm_a) and np.isfinite(norm_b)):
-        return 0.0
+        # Check if dot product is valid
+        if not np.isfinite(dot_product).all():
+            print("Warning: Invalid dot product")
+            return 0.0
 
-    dot_product = np.dot(a, b)
+        return dot_product / (norm_a * norm_b)
+    elif len(a.shape) == 2:
+        print('matrices')
+        norm_a = np.linalg.norm(a, axis=1, keepdims=True)
+        norm_b = np.linalg.norm(b, axis=1, keepdims=True)
+        if np.sum(norm_a) == 0 or np.sum(norm_b) == 0 or not (np.isfinite(norm_a).all() and np.isfinite(norm_b).all()):
+            return 0.0
 
-    # Check if dot product is valid
-    if not np.isfinite(dot_product):
-        print("Warning: Invalid dot product")
-        return 0.0
+        normalized_a = a / norm_a
+        normalized_b = b / norm_b
 
-    return dot_product / (norm_a * norm_b)
+        return np.dot(normalized_a, normalized_b.T)
+
+
 
 def extract_tensor_from_object(tensor_obj):
     """Extract actual tensor data from HuggingFace model outputs or other objects."""
@@ -136,6 +157,10 @@ def get_embeddings_by_layer(db_path="output/llava.db", layer_name=None, device='
             if tensor is None:
                 continue
 
+
+            # Convert dtype from bfloat16 -> float32 if needed
+            if tensor.dtype == torch.bfloat16:
+                tensor = tensor.to(torch.float32)
             # Convert to numpy for analysis
             if tensor.requires_grad:
                 tensor_np = tensor.detach().cpu().numpy()
