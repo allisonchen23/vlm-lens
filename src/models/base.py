@@ -295,7 +295,10 @@ class ModelBase(ABC):
 
         if img_path:
             img = Image.open(img_path) if isinstance(img_path, str) else img_path
-            data['images'] = [img.convert('RGB')]
+            img = img.convert('RGB')
+            if self.config.resize:
+                img = img.resize((self.config.width, self.config.height))
+            data['images'] = [img]
 
         return self.processor(**data)
 
@@ -371,7 +374,7 @@ class ModelBase(ABC):
                     'row_id': row['id'],
                 }
 
-        else:
+        else: # Passed image paths instead of dataset
             if not self.config.has_images():
                 yield {
                     'image': self.config.NO_IMG_PROMPT,  # TODO: Check this?
@@ -381,7 +384,7 @@ class ModelBase(ABC):
                         img_path=None
                     )
                 }
-            else:
+            else:  # Has images
                 prompt = self._generate_prompt(self.config.prompt)
                 for img_path in self.config.image_paths:
                     data = self._generate_processor_output(

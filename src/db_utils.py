@@ -326,30 +326,42 @@ def get_database_info(db_path="output/llava.db"):
 
 def extract_visual_embeddings(input_ids,
                               llm_embeddings,
-                              image_token_id):
+                              image_token_id,
+                              same_shapes=False):
     """
     Given input IDs and LLM embeddings,
         return tokens that are of the image representation; text tokens become 0
 
     Arg(s):
-        input_ids : B x T np.array
-        llm_embeddings : B x T x D np. array
+        input_ids : B x T np.array or B-length list of variable-length np.arrays
+        llm_embeddings : B x T x D np. array or B-length list of variable-length x D np.arrays
         image_token_id : int
 
     Returns:
         visual_tokens, n_visual_tokens : B x T x D np.array, B-dim integer np.array
     """
+    if same_shapes:
+        # Check that Batch and Token dimensions match
+        assert input_ids.shape[0] == llm_embeddings.shape[0]
+        assert input_ids.shape[1] == llm_embeddings.shape[1]
+        assert len(input_ids.shape) == 2
+        assert len(llm_embeddings.shape) == 3
 
-    # Check that Batch and Token dimensions match
-    assert input_ids.shape[0] == llm_embeddings.shape[0]
-    assert input_ids.shape[1] == llm_embeddings.shape[1]
-    assert len(input_ids.shape) == 2
-    assert len(llm_embeddings.shape) == 3
+        # Mask where token corresponds to image
+        mask = np.where(input_ids == image_token_id, 1, 0)
+        n_visual_embs = np.sum(mask, axis=1)
+        visual_embs = llm_embeddings * mask[..., None]
 
-    # Mask where token corresponds to image
-    mask = np.where(input_ids == image_token_id, 1, 0)
-    n_visual_embs = np.sum(mask, axis=1)
-    visual_embs = llm_embeddings * mask[..., None]
+    else: # Handle lists of arrays
+        visual_embs = []
+        n_visual_embs = []
+        for input_id, llm_embedding in zip(input_ids, llm_embeddings):
+            assert input_id.shape == llm_embedding.shape[:-1] # Assert same shape for first 2 dimensions
+            mask = np.where(input_id == image_token_id, 1, 0)
+            n_visual_emb = np.sum(mask, axis=1)
+            visual_emb = llm_embedding * mask[..., None]
+            visual_embs.append(visual_emb)
+            n_visual_embs.append(n_visual_emb)
     return visual_embs, n_visual_embs
 
 def compute_mean_embeddings(embeddings,
