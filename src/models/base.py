@@ -295,7 +295,10 @@ class ModelBase(ABC):
 
         if img_path:
             img = Image.open(img_path) if isinstance(img_path, str) else img_path
-            data['images'] = [img.convert('RGB')]
+            img = img.convert('RGB')
+            if self.config.resize:
+                img = img.resize((self.config.width, self.config.height))
+            data['images'] = [img]
 
         return self.processor(**data)
 

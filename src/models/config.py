@@ -138,17 +138,19 @@ class Config:
             help='The type of pooling to use for the output embeddings'
         )
 
+
         # only parse the args that we know, and throw out what we don't know
         args = parser.parse_known_args()[0]
 
         # the set of potential keys should be defined by the config + any
-        # other special ones here (such as the model args)
+        # other special ones here (such as the model args) that have nested values
         config_keys = list(args.__dict__.keys())
         config_keys.append('model')
         config_keys.append('prompt')
         config_keys.append('modules')
         config_keys.append('forward')
         config_keys.append('dataset')
+        config_keys.append('preprocess')
 
         # first read the config file and set the current attributes to it
         # then parse through the other arguments as that's what we want use to
@@ -283,6 +285,20 @@ class Config:
 
             else: # Assume path to list of image paths
                 self.image_paths = utils.read_file(self.input_dir)
+
+        # store variables for data pre-processing (e.g., resizing images)
+        if hasattr(self, 'preprocess'):
+            # List of dicts -> dict
+            pp_mapping = {}
+            for mapping in self.preprocess:
+                pp_mapping = {**pp_mapping, **mapping}
+            # Store resizing variables
+            if 'resize' in pp_mapping:
+                self.resize = pp_mapping['resize']
+            if self.resize:
+                assert 'width' in pp_mapping and 'height' in pp_mapping
+                self.width = pp_mapping['width']
+                self.height = pp_mapping['height']
 
         # override the modules if we have a module passed in
         if prompt is not None:
