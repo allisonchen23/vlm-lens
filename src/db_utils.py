@@ -182,8 +182,14 @@ def unwrap_embeddings(embeddings,
     From output of `get_embeddings_by_layer()` extract only the embeddings
     idx = 0 gives layer; 1 gives embeddings; 2 gives label
     """
-
-    return np.squeeze(np.array(tuple(map(list, zip(*embeddings)))[idx]))
+    try:
+        unwrapped = np.squeeze(np.array(tuple(map(list, zip(*embeddings)))[idx]))
+        same_shapes = True
+    except Exception as e:
+        print("Could not squeeze embeddings into 2D array: {}".format(e))
+        unwrapped = tuple(map(list, zip(*embeddings)))[1]
+        same_shapes = False
+    return unwrapped, same_shapes
 
 def get_layer_names(db_path="output/llava.db"):
     """
