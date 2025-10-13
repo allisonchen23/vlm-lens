@@ -9,9 +9,9 @@ preprocess:
 output_db: ../output/Qwen2-VL-2B-Instruct-VisualFlow.db
 input_dir: ../data_local/coco/cocoval_50.txt
 prompt: "Describe the color in this image in one word."
-pooling_method: cls
+pooling_method: None
 modules:
+  - visual.blocks.31
   - visual.merger
-  - model.layers.27.post_attention_layernorm
   - model.norm
 
