@@ -125,6 +125,10 @@ class ModelBase(ABC):
                 input (tuple): The input used.
                 output (torch.Tensor): The embeddings to save.
             """
+            # Output of Qwen Decoder Layer is tuple of hidden state and attention weights. Extract hidden state
+            if isinstance(output, tuple):
+                output = output[0]
+
             if not isinstance(output, torch.Tensor):
                 logging.warning(f'Output type of {str(type(module))} is not a tensor, skipped.')
                 return

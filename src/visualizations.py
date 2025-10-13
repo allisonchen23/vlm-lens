@@ -11,16 +11,16 @@ COLORS_HEX = [
     "8ecae6",
     "023047",
     "ffb703",
-    "fb8500", 
+    "fb8500",
     "e63946",
     "a8dadc",
-    "457b9d", 
-    '8d99ae', 
-    '00a896', 
+    "457b9d",
+    '8d99ae',
+    '00a896',
     "219ebc",
-    'f15bb5', 
+    'f15bb5',
     'e0aaff',
-    'ca6702', 
+    'ca6702',
     'ffc8dd',
     'd3d3d3']
 # same but in [0,1] range.
@@ -281,7 +281,7 @@ def horizontal_bar_graph(data,
     else:
         assert fig is not None and ax is not None, "fig and ax must both or neither be None"
 
-    
+
     if type(data) == list and type(data[0]) == list:
         data = np.array(data)
     elif type(data) == list:
@@ -313,7 +313,7 @@ def horizontal_bar_graph(data,
     # Set colors
     if color_idxs is None:
         color_idxs = [i for i in range(n_groups)]
-    
+
     adjusted_base_pos = []
     mid_idx = n_groups // 2
 
@@ -354,7 +354,7 @@ def horizontal_bar_graph(data,
                        color=COLORS_RGB[color_idxs[group_idx]],
                        label=groups[group_idx],
                        height=width)
-                adjusted_base_pos.append(base_pos + width * ((group_idx - mid_idx) * 2 + 1) / 2)            
+                adjusted_base_pos.append(base_pos + width * ((group_idx - mid_idx) * 2 + 1) / 2)
             plot_bars += [plot_bar]
 
     else:  # Odd number of groups
@@ -393,7 +393,7 @@ def horizontal_bar_graph(data,
                     label=groups[group_idx],
                     height=width)
                 adjusted_base_pos.append(base_pos + (group_idx - mid_idx) * width)
-            
+
             plot_bars += [plot_bar]
 
     # Set prettiness
@@ -422,7 +422,7 @@ def horizontal_bar_graph(data,
         else:
             ax.legend(loc=legend_loc)
 
-    
+
 
     # Display values above each bar
     if display_values:
@@ -465,7 +465,7 @@ def horizontal_bar_graph(data,
         return fig, ax, adjusted_base_pos
     else:
         return fig, ax
-    
+
 def bar_graph(data,
               fig=None,
               ax=None,
@@ -538,7 +538,7 @@ def bar_graph(data,
     else:
         assert fig is not None and ax is not None, "fig and ax must both or neither be None"
 
-    
+
     if type(data) == list and type(data[0]) == list:
         data = np.array(data)
     elif type(data) == list:
@@ -563,7 +563,7 @@ def bar_graph(data,
     # Set colors
     if color_idxs is None:
         color_idxs = [i for i in range(n_groups)]
-    
+
     adjusted_xpos = []
     mid_idx = n_groups // 2
 
@@ -604,7 +604,7 @@ def bar_graph(data,
                        color=COLORS_RGB[color_idxs[group_idx]],
                        label=groups[group_idx],
                        width=width)
-                adjusted_xpos.append(x_pos + width * ((group_idx - mid_idx) * 2 + 1) / 2)            
+                adjusted_xpos.append(x_pos + width * ((group_idx - mid_idx) * 2 + 1) / 2)
             plot_bars += [plot_bar]
 
     else:  # Odd number of groups
@@ -643,7 +643,7 @@ def bar_graph(data,
                     label=groups[group_idx],
                     width=width)
                 adjusted_xpos.append(x_pos + (group_idx - mid_idx) * width)
-            
+
             plot_bars += [plot_bar]
 
     # Set prettiness
@@ -711,6 +711,8 @@ def bar_graph(data,
         return fig, ax
 
 def histogram(data,
+              fig=None,
+              ax=None,
               multi_method='side',
               weights=None,
               n_bins=10,
@@ -746,13 +748,24 @@ def histogram(data,
         fig_size : (float, float) or None
             (width, height) of figure size or None
     '''
+    if fig is None and ax is None:
+        plt.clf()
+        if fig_size is not None:
+            fig = plt.figure(figsize=fig_size)
+        else:
+            fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+
+    else:
+        assert fig is not None and ax is not None, "fig and ax must both or neither be None"
 
     assert multi_method in ['side', 'overlap'], "Unrecognized multi_method: {}".format(multi_method)
+
 
     if type(data) == np.ndarray and len(data.shape) == 2:
         data = data.tolist()
         n_data = len(data)
-    else: 
+    else:
         n_data = 1
 
     if labels is None:
@@ -762,7 +775,7 @@ def histogram(data,
 
     if type(data) == np.ndarray and len(data.shape) == 1:
         if labels[0] is None:
-                hist_return = plt.hist(data,
+                hist_return = ax.hist(data,
                     weights=weights,
                     bins=n_bins,
                     range=data_range,
@@ -771,7 +784,7 @@ def histogram(data,
                     edgecolor='black',
                     alpha=alpha)
         else:
-            hist_return = plt.hist(data,
+            hist_return = ax.hist(data,
                     weights=weights,
                     bins=n_bins,
                     label=labels[0],
@@ -785,7 +798,7 @@ def histogram(data,
         if multi_method == 'overlap':
             hist_return = []
             for cur_idx, cur_data in enumerate(data):
-                hist_return.append(plt.hist(cur_data,
+                hist_return.append(ax.hist(cur_data,
                      bins=n_bins,
                      weights=weights[cur_idx],
                      label=labels[cur_idx],
@@ -796,7 +809,7 @@ def histogram(data,
                     alpha=alpha))
         # Side by side histogram
         else:
-            hist_return = plt.hist(data,
+            hist_return = ax.hist(data,
                  bins=n_bins,
                  weights=weights,
                  label=labels,
@@ -808,33 +821,32 @@ def histogram(data,
 
     # Marker is a vertical line marking original
     if marker is not None:
-        plt.axvline(x=marker, color='r')
+        ax.axvline(x=marker, color='r')
 
     # Make legend
     if labels is not None:
-        plt.legend()
+        ax.legend()
     # Set title and axes labels
     if title is not None:
-        plt.title(title)
+        ax.set_title(title)
     if xlabel is not None:
-        plt.xlabel(xlabel)
+        ax.set_xlabel(xlabel)
     if ylabel is not None:
-        plt.ylabel(ylabel)
+        ax.set_ylabel(ylabel)
 
     if xlim is not None:
-        plt.xlim(xlim)
+        ax.set_xlim(xlim)
     if ylim is not None:
-        plt.ylim(ylim)
-    if fig_size is not None:
-        plt.figure(figsize=fig_size)
+        ax.set_ylim(ylim)
+    # if fig_size is not None:
+    #     plt.figure(figsize=fig_size)
     if save_path is not None:
         utils.ensure_dir(os.path.dirname(save_path))
         plt.savefig(save_path)
     if show:
         plt.show()
-    plt.clf()
 
-    return hist_return # (bins, bin_values, _)
+    return fig, ax, hist_return # (bins, bin_values, _)
 
 def plot(xs,
          ys,
@@ -880,7 +892,7 @@ def plot(xs,
         marker_size : int
             size of markers for scatter plot
         marker_shapes : list[str]
-            list of market shape for each value in xs 
+            list of market shape for each value in xs
             (e.g. 'o'->circle, 's'-> square, '^'->up triangle, 'v' -> down triangle '+' -> plus)
         colors : list[str]
             color for each list in xs
@@ -932,7 +944,7 @@ def plot(xs,
 
     assert len(ys) == n_lines, "ys list must be same length as xs. Received {} and {}".format(len(ys), n_lines)
     assert len(labels) == n_lines, "Labels list must be same length as xs. Received {} and {}".format(len(labels), n_lines)
-    
+
     if errors is not None:
         assert len(errors) == n_lines, "Errors list must be same length as xs. Received {} and {}".format(len(errors), n_lines)
         for err_row in errors:
@@ -961,7 +973,7 @@ def plot(xs,
     for idx in range(n_lines):
         x = xs[idx]
         y = ys[idx]
-            
+
         label = labels[idx]
 
         if point_annotations is not None:
@@ -1174,7 +1186,7 @@ def pointplot(means,
               labels=None,
               show_legend=True,
               legend_loc=None,
-              orientation='vertical', 
+              orientation='vertical',
               fig=None,
               ax=None,
               fig_size=None,
@@ -1270,13 +1282,13 @@ def pointplot(means,
         else:
             ax.tick_params(axis='y', which='both', length=0)
 
-        
+
         if xtick_labels is not None:
             ax.set_xticks(xtick_labels)
-            
-            
+
+
             ax.set_xticklabels(
-                xtick_labels, 
+                xtick_labels,
                 rotation=xtick_label_rotation,
                 fontsize=font_size_dict['xticklabel'] if 'xticklabel' in font_size_dict else None)
     elif orientation == 'vertical':
@@ -1293,7 +1305,7 @@ def pointplot(means,
                     x_positions = np.arange(n_items) + (idx - 1.5) * spacing_multiplier
             elif len(labels) == 2:
                 x_positions = np.arange(n_items) + (idx - 0.5) * spacing_multiplier
-            
+
             ax.errorbar(
                 x_positions,
                 means[idx],
@@ -1307,7 +1319,7 @@ def pointplot(means,
             # Adjust x-axis for category labels
             ax.set_xticks(np.arange(len(xtick_labels)))
             ax.set_xticklabels(
-                xtick_labels, 
+                xtick_labels,
                 rotation=xtick_label_rotation,
                 fontsize=font_size_dict['xticklabel'] if 'xticklabel' in font_size_dict else None)
 
@@ -1321,7 +1333,7 @@ def pointplot(means,
                     fontsize=font_size_dict['yticklabel'] if 'yticklabel' in font_size_dict else None)
             else:
                 ax.tick_params(axis='y', which='both', length=0)
-    else: 
+    else:
         raise ValueError("orientation '{}' not supported".format(orientation))
 
     # Show grid
@@ -1439,7 +1451,7 @@ def confusion_matrix(cmat,
                      save_path=None,
                      show=True):
     disp = metrics.ConfusionMatrixDisplay(
-        cmat, 
+        cmat,
         display_labels=cmat_labels)
     if len(cmat_labels) > 20:
         h = len(cmat_labels) * 4.8 / 15

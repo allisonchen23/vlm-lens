@@ -6,13 +6,19 @@ preprocess:
   - resize: True
   - width: 336
   - height: 336
-output_db: ../output/Qwen2-VL-2B-Instruct-VisualFlow.db
+output_db: ../output/Qwen2-VL-2B-Instruct-VisualFlowSpacedSampling.db
 input_dir: ../data_local/coco/cocoval_50.txt
 prompt: "Describe this image in one sentence."
 pooling_method: None
 modules:
-  - visual.blocks.31
+  - visual.blocks.0
+  - visual.blocks.9
+  - visual.blocks.17
+  - visual.blocks.25
   - visual.merger
-  - model.layers.27
+  - model.layers.0
+  - model.layers.8
+  - model.layers.15
+  - model.layers.23
   - model.norm
 
