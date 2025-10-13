@@ -18,6 +18,7 @@ from datasets import load_dataset, load_from_disk
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]  # models -> src -> root
 sys.path.append(str(PROJECT_ROOT))
+import src.utils as utils
 
 
 class ModelSelection(str, Enum):
@@ -273,11 +274,16 @@ class Config:
 
             self.dataset = dataset
 
-        else:
+        else: # No dataset, input_dir only
             self.dataset = None
-            self.set_image_paths(self.input_dir
-                                 if hasattr(self, 'input_dir') else
-                                 None)
+            if os.path.isdir(self.input_dir):
+                self.set_image_paths(self.input_dir
+                                    if hasattr(self, 'input_dir') else
+                                    None)
+
+            else: # Assume path to list of image paths
+                self.image_paths = utils.read_file(self.input_dir)
+
         # override the modules if we have a module passed in
         if prompt is not None:
             self.prompt = prompt

@@ -371,7 +371,7 @@ class ModelBase(ABC):
                     'row_id': row['id'],
                 }
 
-        else:
+        else: # Passed image paths instead of dataset
             if not self.config.has_images():
                 yield {
                     'image': self.config.NO_IMG_PROMPT,  # TODO: Check this?
@@ -381,7 +381,7 @@ class ModelBase(ABC):
                         img_path=None
                     )
                 }
-            else:
+            else:  # Has images
                 prompt = self._generate_prompt(self.config.prompt)
                 for img_path in self.config.image_paths:
                     data = self._generate_processor_output(
