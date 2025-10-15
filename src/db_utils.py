@@ -187,6 +187,7 @@ def unwrap_embeddings(embeddings,
         same_shapes = True
     except Exception as e:
         print("Could not squeeze embeddings into 2D array: {}".format(e))
+        print(tuple(map(list, zip(*embeddings))))
         unwrapped = tuple(map(list, zip(*embeddings)))[1]
         same_shapes = False
     return unwrapped, same_shapes
