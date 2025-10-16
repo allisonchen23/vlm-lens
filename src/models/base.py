@@ -83,6 +83,16 @@ class ModelBase(ABC):
         """Abstract method that loads the specific model."""
         pass
 
+    @abstractmethod
+    def get_vision_key(self) -> str:
+        """Returns the key for vision model"""
+        pass
+
+    @abstractmethod
+    def get_layer_modality(self, layer_name) -> str:
+        """Returns 'vision' or 'text' depending on which part of the model the layer is from"""
+        pass
+
     def _init_processor(self) -> None:
         """Initialize the self.processor by loading from the path."""
         self.processor = AutoProcessor.from_pretrained(self.model_path)

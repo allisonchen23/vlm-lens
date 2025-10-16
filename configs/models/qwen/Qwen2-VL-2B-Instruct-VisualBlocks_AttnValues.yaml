@@ -11,8 +11,7 @@ input_dir: ../data_local/coco/cocoval_50.txt
 prompt: "Describe this image in one sentence."
 pooling_method: None
 modules:
-  - visual.blocks.\d{1,2}$
-  - visual.merger
-  - model.layers.\d{1,2}$
+  - visual.blocks.\d{1,2}.VisionSdpaAttention.qkv
+  - model.layers.\d{1,2}.v_proj
   - model.norm
 

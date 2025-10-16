@@ -41,7 +41,8 @@ class ModelSelection(str, Enum):
     QWEN = 'qwen'
 
 IMAGE_TOKEN_IDS = {
-    ModelSelection.QWEN: 151655
+    ModelSelection.QWEN: 151655,
+    ModelSelection.LLAVA: 32000
 }
 
 class Config:
@@ -322,6 +323,14 @@ class Config:
         # if there is no output database set, use embeddings.db as the default
         if not hasattr(self, 'output_db'):
             self.output_db = 'embeddings.db'
+
+    def get_model_id(self) -> str:
+        """Returns the base of the model path as the model ID
+
+        Returns:
+            str: base of model path
+        """
+        return self.model_path.split("/")[-1]
 
     def has_images(self) -> bool:
         """Returns a boolean for whether or not the input directory has images.

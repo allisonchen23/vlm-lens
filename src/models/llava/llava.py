@@ -29,3 +29,15 @@ class LlavaModel(ModelBase):
                 self.model_path
             )
         )
+
+    def get_vision_key(self):
+        return "vision_tower"
+
+    def get_layer_modality(self, layer_name) -> str:
+        """Returns 'vision' or 'text' depending on which part of the model the layer is from"""
+        if layer_name.startswith("vision_tower") or layer_name.startswith("multi_modal_projector"):
+            return "vision"
+        elif layer_name.startswith("language_model"):
+            return "text"
+        else:
+            raise ValueError("Layer '{}' not recognized for LLaVA".format(layer_name))
