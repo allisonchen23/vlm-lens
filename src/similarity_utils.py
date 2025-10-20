@@ -5,10 +5,11 @@ import numpy as np
 import db_utils
 from models.config import IMAGE_TOKEN_IDS
 
+AVAILABLE_MODALITIES = ['text', 'vision', 'text+vision']
 def compute_image_pair_similarities(database_path,
                                     model,
                                     layer_names=None,
-                                    extract_visual_tokens=True):
+                                    modalities=['visual']):
     '''
     For each layer, compute the image pair wise similarity matrices.
     Assumes we are taking the mean embedding value.
@@ -22,8 +23,16 @@ def compute_image_pair_similarities(database_path,
     Returns:
         tuple(list[str], list[np.array], list[float]) : layer_names, embeddings, and similarities
     '''
-    # Get input_ids
-    if extract_visual_tokens:
+    # Check for valid modalities
+    assert len(modalities) > 0
+    for mode in modalities:
+        if mode not in AVAILABLE_MODALITIES:
+            raise ValueError("Modality {} not supported. Try one of {}".format(mode, AVAILABLE_MODALITIES))
+        if mode == "text":
+            raise ValueError("Modality {} currently not yet supported. T.T Need to get on it!".format(mode))
+
+    # Get input_ids if we need to separate image and text
+    if "vision" in modalities or "text" in modalities:
         input_ids = db_utils.get_embeddings_by_layer(
             db_path=database_path,
             layer_name="input_ids",
@@ -37,14 +46,16 @@ def compute_image_pair_similarities(database_path,
             if model.config.matches_module(name):
                 layer_names.append(name[0])
 
-    layer_embeddings = []
-    layer_similarities = []
-
+    # Return values
+    module_embeddings = []
+    module_similarities = []
+    module_names = []
     # Get embeddings for each layer and compute image-pair similarity scores
     for layer_name in layer_names:
         if not model.config.matches_module(layer_name):
+            print("{} not present in config".format(layer_name))
             continue
-        print(layer_name)
+
         # This may take a long time if the data is not stored in memory recently
         module_embedding = db_utils.get_embeddings_by_layer(
             db_path=database_path,
@@ -56,38 +67,47 @@ def compute_image_pair_similarities(database_path,
         except Exception as e:
             print(layer_name, module_embedding)
 
-        # Optionally extract image tokens if this is a text-image layer
-        if extract_visual_tokens and layer_name.startswith("model"): # TODO: this might be different criteria for non Qwen Models
-            module_embedding, n_embeddings = db_utils.extract_visual_embeddings(
-                input_ids=input_ids,
-                llm_embeddings=module_embedding,
-                image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
-                same_shapes=module_embedding_same_shapes)
-        else:
-            n_embeddings = None  # if None, compute mean embedding over whole sequence
+        for modality in modalities:
+            # Optionally extract image tokens if this is a text-image layer
+            if modality == "vision" and layer_name.startswith("model"): # TODO: this might be different criteria for non Qwen Models
+                modality_embedding, n_embeddings = db_utils.extract_visual_embeddings(
+                    input_ids=input_ids,
+                    llm_embeddings=module_embedding,
+                    image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
+                    same_shapes=module_embedding_same_shapes)
+            elif modality == "text" and layer_name.startswith("model"): # TODO: this might be different criteria for non Qwen Models
+                pass
+            else: # text+vision
+                modality_embedding = np.copy(module_embedding)
+                n_embeddings = None  # if None, compute mean embedding over whole sequence
 
-        # Calculate mean embedding
-        mean_embeddings = db_utils.compute_mean_embeddings(
-            embeddings=module_embedding,
-            n_embeddings=n_embeddings)
+            # Calculate mean embedding
+            mean_embeddings = db_utils.compute_mean_embeddings(
+                embeddings=modality_embedding,
+                n_embeddings=n_embeddings)
 
 
-        # Calculate similarities of pairs of images
-        module_sim = db_utils.cosine_similarity_numpy(mean_embeddings, mean_embeddings)
-        # Assert similarity is symmetric
-        assert np.array_equal(module_sim, module_sim.T)
+            # Calculate similarities of pairs of images
+            module_sim = db_utils.cosine_similarity_numpy(mean_embeddings, mean_embeddings)
+            # Assert similarity is symmetric
+            assert np.array_equal(module_sim, module_sim.T)
 
-        # Select only Upper Triangular Matrix
-        n_samples = module_sim.shape[0]
-        ut_idxs = np.triu_indices(n_samples, k=1)
-        sim_values = module_sim[ut_idxs]
-        assert len(sim_values) == n_samples * (n_samples - 1) / 2
+            # Select only Upper Triangular Matrix
+            n_samples = module_sim.shape[0]
+            ut_idxs = np.triu_indices(n_samples, k=1)
+            sim_values = module_sim[ut_idxs]
+            assert len(sim_values) == n_samples * (n_samples - 1) / 2
 
-        # Store values in list
-        layer_embeddings.append(mean_embeddings)
-        layer_similarities.append(sim_values)
+            # Store values in list
+            if modality == "text" or modality == "vision":
+                module_name = layer_name + "-" + modality
+            else:
+                module_name = layer_name
+            module_names.append(module_name)
+            module_embeddings.append(mean_embeddings)
+            module_similarities.append(sim_values)
 
-    return (layer_names, layer_embeddings, layer_similarities)
+    return (module_names, module_embeddings, module_similarities)
 
         # Compute mean embedding of visual tokens only (if applicable)
         # if layer_name.startswith("model"):
@@ -113,6 +133,6 @@ def compute_image_pair_similarities(database_path,
         #     assert len(sim_values) == n_samples * (n_samples - 1) / 2
 
         #     # Store values in list
-        #     layer_embeddings.append(visual_mean_embeddings)
-        #     layer_similarities.append(sim_values)
+        #     module_embeddings.append(visual_mean_embeddings)
+        #     module_similarities.append(sim_values)
 
