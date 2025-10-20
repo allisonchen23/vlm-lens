@@ -1,5 +1,6 @@
 # Library imports
 import numpy as np
+from tqdm import tqdm
 
 # Local imports
 import db_utils
@@ -44,14 +45,14 @@ def compute_image_pair_similarities(database_path,
         layer_names = []
         for name, _ in model.model.named_modules():
             if model.config.matches_module(name):
-                layer_names.append(name[0])
+                layer_names.append(name)
 
     # Return values
     module_embeddings = []
     module_similarities = []
     module_names = []
     # Get embeddings for each layer and compute image-pair similarity scores
-    for layer_name in layer_names:
+    for layer_name in tqdm(layer_names):
         if not model.config.matches_module(layer_name):
             print("{} not present in config".format(layer_name))
             continue
