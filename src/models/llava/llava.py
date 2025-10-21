@@ -29,3 +29,6 @@ class LlavaModel(ModelBase):
                 self.model_path
             )
         )
+
+    def get_vision_key(self):
+        return "vision_tower"

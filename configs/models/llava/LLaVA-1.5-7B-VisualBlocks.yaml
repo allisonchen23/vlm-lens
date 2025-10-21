@@ -11,4 +11,7 @@ input_dir: ../data_local/coco/cocoval_50.txt
 prompt: "Describe this image in one sentence."
 pooling_method: None
 modules:
-  - vision_tower.vision_model
+  - vision_tower.vision_model.encoder.layers.\d{1,2}$
+  - multi_modal_projector
+  - language_model.model.layers.\d{1,2}$
+  - language_model.model.norm

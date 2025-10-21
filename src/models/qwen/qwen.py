@@ -29,3 +29,5 @@ class QwenModel(ModelBase):
                 self.model_path
             )
         )
+    def get_vision_key(self):
+        return "visual"
