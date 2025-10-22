@@ -1,7 +1,11 @@
 import io
 import numpy as np
+import os
 import sqlite3
 import torch
+from tqdm import tqdm
+
+import utils
 
 def cosine_similarity_numpy(a, b):
     """Calculate cosine similarity between two vectors or matrices using numpy with robust error handling.
@@ -449,3 +453,55 @@ def extract_features_and_targets(db_path="output/llava.db", probe_layer=None, de
                 continue
 
     return np.array(features), np.array(targets), label_to_idx
+
+def save_embeddings_npy(db_path,
+                        layer_names,
+                        overwrite=False):
+    """
+    Extract embeddings from database and save as separate .npy files for each layer. To save time for later retrieval
+
+    Arg(s):
+        db_path : str
+        layer_names : list[str]
+    """
+    save_dir, _ = os.path.splitext(db_path)
+    utils.ensure_dir(save_dir)
+
+    # Save input IDs
+    try:
+        save_path = os.path.join(save_dir, "{}.npy".format("input_ids"))
+        # Do not overwrite
+        if os.path.exists(save_path) and not overwrite:
+            utils.informal_log("File exists at {} and not overwriting".format(save_path))
+        else:
+            input_ids = get_embeddings_by_layer(
+                    db_path=db_path,
+                    layer_name="input_ids")
+            try:
+                input_ids, _ = unwrap_embeddings(input_ids)
+            except Exception as e:
+                raise ValueError("{} {} {}".format(e, "input IDs", input_ids))
+            assert isinstance(input_ids, np.ndarray)
+            utils.write_file(input_ids, save_path)
+    except:
+        utils.informal_log("Could not save input IDs")
+
+    # Iterate through layers and save embeddings
+    for idx, layer_name in enumerate(tqdm(layer_names)):
+        save_path = os.path.join(save_dir, "{}.npy".format(layer_name))
+
+        # Do not overwrite
+        if os.path.exists(save_path) and not overwrite:
+            utils.informal_log("File exists at {} and not overwriting".format(save_path))
+            continue
+
+        module_embedding = get_embeddings_by_layer(
+            db_path=db_path,
+            layer_name=layer_name
+        )
+        try:
+            module_embedding, _ = unwrap_embeddings(module_embedding)
+        except Exception as e:
+            raise ValueError("{} {} {}".format(e, layer_name, module_embedding))
+        assert isinstance(module_embedding, np.ndarray)
+        utils.write_file(module_embedding, save_path)

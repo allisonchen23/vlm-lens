@@ -7,6 +7,7 @@ import io
 import logging
 import os
 import sqlite3
+import sys
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from typing import Callable, List, Optional, TypedDict
@@ -17,8 +18,10 @@ from PIL import Image
 from transformers import AutoProcessor
 from transformers.feature_extraction_utils import BatchFeature
 
-from .config import Config
 
+from .config import Config
+sys.path.insert(0, '..')
+import utils
 
 class ModelInput(TypedDict):
     """Definition for the general model input dictionary."""
@@ -91,6 +94,10 @@ class ModelBase(ABC):
     @abstractmethod
     def get_layer_modality(self, layer_name) -> str:
         """Returns 'vision' or 'text' depending on which part of the model the layer is from"""
+        pass
+
+    @abstractmethod
+    def get_unwrap_qkv_fn(self) -> Callable:
         pass
 
     def _init_processor(self) -> None:
@@ -260,7 +267,9 @@ class ModelBase(ABC):
 
     def _initialize_db(self) -> None:
         """Initializes a database based on config."""
+
         # Connect to the database, creating it if it doesn't exist
+        utils.ensure_dir(os.path.dirname(self.config.output_db))
         self.connection = sqlite3.connect(self.config.output_db)
         logging.debug(f'Database created at {self.config.output_db}')
 

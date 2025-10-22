@@ -41,3 +41,6 @@ class LlavaModel(ModelBase):
             return "text"
         else:
             raise ValueError("Layer '{}' not recognized for LLaVA".format(layer_name))
+
+    def get_unwrap_qkv_fn(self):
+        return lambda x: x

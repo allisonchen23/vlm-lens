@@ -33,6 +33,25 @@ class QwenModel(ModelBase):
     def get_vision_key(self) -> str:
         return "visual"
 
+    def get_unwrap_qkv_fn(self):
+        """Returns a function that will split up the QKV matrix"""
+        def _unwrap(qkv_matrix):
+            assert len(qkv_matrix.shape) in (2, 3) # Sequence Length x Dim
+            if len(qkv_matrix.shape) == 2:
+                seq_length = qkv_matrix.shape[0]
+                # Split into Q, K, V
+                qkv_matrix = qkv_matrix.reshape(seq_length, 3, -1) # TODO: This might bite me in the butt, but for now ignoring multi-heads
+                # Permute so Q, K, V dimension is first
+                qkv_matrix = qkv_matrix.transpose(1, 0, 2)
+            else:
+                batch_size, seq_length = qkv_matrix.shape[:2]
+                # Split into Q, K, V
+                qkv_matrix = qkv_matrix.reshape(batch_size, seq_length, 3, -1) # TODO: This might bite me in the butt, but for now ignoring multi-heads
+                # Permute so Q, K, V dimension is first
+                qkv_matrix = qkv_matrix.transpose(2, 0, 1, 3)
+            return qkv_matrix
+        return _unwrap
+
     def get_layer_modality(self, layer_name) -> str:
         """Returns 'vision' or 'text' depending on which part of the model the layer is from"""
         if layer_name.startswith("visual"):
