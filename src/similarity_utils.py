@@ -5,6 +5,7 @@ from tqdm import tqdm
 # Local imports
 import db_utils
 from models.config import IMAGE_TOKEN_IDS
+import visualizations
 
 AVAILABLE_MODALITIES = ['text', 'vision', 'text+vision']
 def compute_image_pair_similarities(database_path,
@@ -39,6 +40,8 @@ def compute_image_pair_similarities(database_path,
             layer_name="input_ids",
             device="cuda")
         input_ids, _ = db_utils.unwrap_embeddings(input_ids) # empty value is input_ids_same_shapes
+        assert model.config.architecture in IMAGE_TOKEN_IDS, \
+            "No entry for {} in models.config.IMAGE_TOKEN_IDS".format(model.config.architecture)
 
     # If layer_names is None, assume all layer names in config are desired
     if layer_names is None:
@@ -68,25 +71,37 @@ def compute_image_pair_similarities(database_path,
         except Exception as e:
             print(layer_name, module_embedding)
 
+        layer_modality = model.get_layer_modality(layer_name)
+        assert layer_modality in ["vision", "text"]
         for modality in modalities:
-            # Optionally extract image tokens if this is a text-image layer
-            if modality == "vision" and layer_name.startswith("model"): # TODO: this might be different criteria for non Qwen Models
-                modality_embedding, n_embeddings = db_utils.extract_visual_embeddings(
-                    input_ids=input_ids,
-                    llm_embeddings=module_embedding,
-                    image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
-                    same_shapes=module_embedding_same_shapes)
-            elif modality == "text" and layer_name.startswith("model"): # TODO: this might be different criteria for non Qwen Models
-                pass
-            else: # text+vision
-                modality_embedding = np.copy(module_embedding)
-                n_embeddings = None  # if None, compute mean embedding over whole sequence
-
+            if layer_modality == "vision": # In the vision space of the model
+                if modality == "vision":
+                    modality_embedding = np.copy(module_embedding)
+                    n_embeddings = None
+                    module_name = layer_name
+                elif modality == "text":
+                    pass
+                else: # text + vision
+                    continue # Because there is no additional text in the vision layers, skip
+            elif layer_modality == "text": # In the text space of the model
+                if modality == "vision":
+                    modality_embedding, n_embeddings = db_utils.extract_visual_embeddings(
+                        input_ids=input_ids,
+                        llm_embeddings=module_embedding,
+                        image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
+                        same_shapes=module_embedding_same_shapes)
+                    module_name = layer_name + "-" + modality
+                elif modality == "text":
+                    pass
+                else: # text + vision
+                    # Do nothing special because we want both text + vision
+                    modality_embedding = np.copy(module_embedding)
+                    n_embeddings = None  # if None, compute mean embedding over whole sequence
+                    module_name = layer_name
             # Calculate mean embedding
             mean_embeddings = db_utils.compute_mean_embeddings(
                 embeddings=modality_embedding,
                 n_embeddings=n_embeddings)
-
 
             # Calculate similarities of pairs of images
             module_sim = db_utils.cosine_similarity_numpy(mean_embeddings, mean_embeddings)
@@ -100,40 +115,70 @@ def compute_image_pair_similarities(database_path,
             assert len(sim_values) == n_samples * (n_samples - 1) / 2
 
             # Store values in list
-            if modality == "text" or modality == "vision":
-                module_name = layer_name + "-" + modality
-            else:
-                module_name = layer_name
             module_names.append(module_name)
             module_embeddings.append(mean_embeddings)
             module_similarities.append(sim_values)
 
     return (module_names, module_embeddings, module_similarities)
 
-        # Compute mean embedding of visual tokens only (if applicable)
-        # if layer_name.startswith("model"):
-        #     module_visual_embedding, n_visual_tokens = db_utils.extract_visual_embeddings(
-        #         input_ids=input_ids,
-        #         llm_embeddings=module_embedding,
-        #         image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
-        #         same_shapes=module_embedding_same_shapes
-        #     )
-        #     # Calculate mean embedding
-        #     visual_mean_embeddings = db_utils.compute_mean_embeddings(
-        #         embeddings=module_visual_embedding,
-        #         n_embeddings=n_visual_tokens)
-        #     # Compute similarity
-        #     module_sim = db_utils.cosine_similarity_numpy(mean_embeddings, mean_embeddings)
-        #     # Assert similarity is symmetric
-        #     assert np.array_equal(module_sim, module_sim.T)
+# For each layer, calculate the mean similarity and the norm
+def plot_similarities(module_names,
+                      module_embeddings,
+                      module_similarities,
+                      vision_key,
+                      model_name=''):
+    '''
+    Given list of module names, image embeddings (vision and text + vision), and similarities
+    plot mean similarity score for each layer
 
-        #     # Select only Upper Triangular Matrix
-        #     n_samples = module_sim.shape[0]
-        #     ut_idxs = np.triu_indices(n_samples, k=1)
-        #     sim_values = module_sim[ut_idxs]
-        #     assert len(sim_values) == n_samples * (n_samples - 1) / 2
+    Arg(s):
+        module_names : list[str]
+        module_embeddings : list[2D np.array]
+        module_similarities : list[1D np.array]
+    '''
+    mean_embeddings = {}
+    mean_similarities = {}
+    for idx, (name, embs, sims) in enumerate(zip(module_names, module_embeddings, module_similarities)):
+        # Key is based on vision vs text
+        key = name.split(".")[0]
+        # If we are isolating vision token embeddings
+        if "-" in name:
+            key += " ({})".format(name.split("-")[1])
+        if key in mean_embeddings:
+            mean_embeddings[key].append(np.mean(embs))
+        else:
+            mean_embeddings[key] = [np.mean(embs)]
 
-        #     # Store values in list
-        #     module_embeddings.append(visual_mean_embeddings)
-        #     module_similarities.append(sim_values)
+        if key in mean_similarities:
+            mean_similarities[key].append(np.mean(sims))
+        else:
+            mean_similarities[key] = [np.mean(sims)]
 
+    # Plot mean image-pair similarity scores by layer
+    xs = []
+    ys = []
+    labels = []
+
+    # Separate data based on modality and layer
+    if vision_key in mean_embeddings:
+        n_vision_layers = len(mean_embeddings[vision_key])
+    else:
+        n_vision_layers = 0
+    for k, v in mean_similarities.items():
+        if vision_key not in k: # text layer
+            xs.append([i + n_vision_layers for i in range(len(v))])
+        else:
+            xs.append([i for i in range(len(v))])
+        ys.append(v)
+        labels.append("{} blocks".format(k))
+
+    visualizations.plot(
+        xs=xs,
+        ys=ys,
+        labels=labels,
+        alpha=0.6,
+        xlabel='Layer of {} Model'.format(model_name),
+        ylabel='Mean Image Pairwise Similarity (0-1)',
+        show=True
+    )
+    return mean_embeddings, mean_similarities

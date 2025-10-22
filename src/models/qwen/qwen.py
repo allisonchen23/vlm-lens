@@ -29,5 +29,15 @@ class QwenModel(ModelBase):
                 self.model_path
             )
         )
-    def get_vision_key(self):
+
+    def get_vision_key(self) -> str:
         return "visual"
+
+    def get_layer_modality(self, layer_name) -> str:
+        """Returns 'vision' or 'text' depending on which part of the model the layer is from"""
+        if layer_name.startswith("visual"):
+            return "vision"
+        elif layer_name.startswith("model"):
+            return "text"
+        else:
+            raise ValueError("Layer '{}' not recognized for Qwen".format(layer_name))

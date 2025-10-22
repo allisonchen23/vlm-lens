@@ -41,7 +41,8 @@ class ModelSelection(str, Enum):
     QWEN = 'qwen'
 
 IMAGE_TOKEN_IDS = {
-    ModelSelection.QWEN: 151655
+    ModelSelection.QWEN: 151655,
+    ModelSelection.LLAVA: 32000
 }
 
 class Config:
