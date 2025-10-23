@@ -97,7 +97,7 @@ class ModelBase(ABC):
         pass
 
     @abstractmethod
-    def unwrap_qkv(self) -> Callable:
+    def get_unwrap_qkv_fn(self) -> Callable:
         pass
 
     def _init_processor(self) -> None:

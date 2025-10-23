@@ -8,10 +8,120 @@ from models.config import IMAGE_TOKEN_IDS
 import visualizations
 
 AVAILABLE_MODALITIES = ['text', 'vision', 'text+vision']
+
+def compute_image_pair_similarity_at_layer(model,
+                                           layer_name,
+                                           database_path,
+                                           modalities,
+                                           input_ids,
+                                           # Parameters for unwrapping attention
+                                           unwrap_fn=None,
+                                           attn_component=None):
+    """
+    Compute the image pair similarities for a given layer, potentially selecting different modalities
+
+    Arg(s):
+        model : model.ModelBase
+        layer_name : str
+        database_path : str
+        modalities : list[str]
+        input_ids : np.array
+
+    Returns:
+        module_names : list[str]
+        module_embeddings : list[np.array]
+        module_sims : list[np.array]
+
+        Length of lists = len(modalities)
+    """
+    if not model.config.matches_module(layer_name):
+        print("{} not present in config".format(layer_name))
+        return
+
+    # This may take a long time if the data is not stored in memory recently
+    module_embedding = db_utils.get_embeddings_by_layer(
+        db_path=database_path,
+        layer_name=layer_name
+    )
+    # Try to get module embeddings as np.array. Will throw an error if mismatched shapes
+    try:
+        module_embedding, module_embedding_same_shapes = db_utils.unwrap_embeddings(module_embedding)
+    except Exception as e:
+        print(layer_name, module_embedding)
+
+    # Might need to unwrap attention QKV
+    if unwrap_fn is not None:
+        assert attn_component is not None, "Must pass in an attention component to extract"
+        assert attn_component in ["query", "key", "value"], \
+        "Unrecognized attention component: {}".format(attn_component)
+        module_embedding = unwrap_fn(module_embedding)
+        if attn_component == "query":
+            module_embedding = module_embedding[0, ...]
+        elif attn_component == "value":
+            module_embedding = module_embedding[1, ...]
+        else: # value
+            module_embedding = module_embedding[2, ...]
+
+    layer_modality = model.get_layer_modality(layer_name)
+    assert layer_modality in ["vision", "text"]
+
+    module_names = []
+    module_embeddings = []
+    module_sims = []
+    for modality in modalities:
+        if layer_modality == "vision": # In the vision space of the model
+            if modality == "vision":
+                modality_embedding = np.copy(module_embedding)
+                n_embeddings = None
+                module_name = layer_name
+            elif modality == "text":
+                pass
+            else: # text + vision
+                continue # Because there is no additional text in the vision layers, skip
+        elif layer_modality == "text": # In the text space of the model
+            if modality == "vision":
+                modality_embedding, n_embeddings = db_utils.extract_visual_embeddings(
+                    input_ids=input_ids,
+                    llm_embeddings=module_embedding,
+                    image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
+                    same_shapes=module_embedding_same_shapes)
+                module_name = layer_name + "-" + modality
+            elif modality == "text":
+                pass
+            else: # text + vision
+                # Do nothing special because we want both text + vision
+                modality_embedding = np.copy(module_embedding)
+                n_embeddings = None  # if None, compute mean embedding over whole sequence
+                module_name = layer_name
+        # Calculate mean embedding
+        mean_embeddings = db_utils.compute_mean_embeddings(
+            embeddings=modality_embedding,
+            n_embeddings=n_embeddings)
+
+        # Calculate similarities of pairs of images
+        module_sim = db_utils.cosine_similarity_numpy(mean_embeddings, mean_embeddings)
+        # Assert similarity is symmetric
+        assert np.array_equal(module_sim, module_sim.T)
+
+        # Select only Upper Triangular Matrix
+        n_samples = module_sim.shape[0]
+        ut_idxs = np.triu_indices(n_samples, k=1)
+        sim_values = module_sim[ut_idxs]
+        assert len(sim_values) == n_samples * (n_samples - 1) / 2
+
+        # Add to list
+        module_names.append(module_name)
+        module_embeddings.append(mean_embeddings)
+        module_sims.append(sim_values)
+
+    return module_names, module_embeddings, module_sims
+
 def compute_image_pair_similarities(database_path,
                                     model,
                                     layer_names=None,
-                                    modalities=['visual']):
+                                    modalities=['visual'],
+                                    # Parameters for unwrapping attention
+                                    attn_component=None):
     '''
     For each layer, compute the image pair wise similarity matrices.
     Assumes we are taking the mean embedding value.
@@ -51,73 +161,91 @@ def compute_image_pair_similarities(database_path,
                 layer_names.append(name)
 
     # Return values
+    module_names = []
     module_embeddings = []
     module_similarities = []
-    module_names = []
+
     # Get embeddings for each layer and compute image-pair similarity scores
     for layer_name in tqdm(layer_names):
-        if not model.config.matches_module(layer_name):
-            print("{} not present in config".format(layer_name))
-            continue
+        if "qkv" in layer_name: # TODO: This might need to change beyond Qwen models
+            unwrap_fn = model.unwrap_qkv()
+        else:
+            unwrap_fn = None
+        modality_names, modality_embeddings, modality_similarities = \
+            compute_image_pair_similarity_at_layer(
+                model=model,
+                layer_name=layer_name,
+                database_path=database_path,
+                modalities=modalities,
+                input_ids=input_ids,
+                unwrap_fn=unwrap_fn,
+                attn_component=attn_component)
 
-        # This may take a long time if the data is not stored in memory recently
-        module_embedding = db_utils.get_embeddings_by_layer(
-            db_path=database_path,
-            layer_name=layer_name
-        )
-        # Try to get module embeddings as np.array. Will throw an error if mismatched shapes
-        try:
-            module_embedding, module_embedding_same_shapes = db_utils.unwrap_embeddings(module_embedding)
-        except Exception as e:
-            print(layer_name, module_embedding)
+        module_names += modality_names
+        module_embeddings += modality_embeddings
+        module_similarities += modality_similarities
+        # if not model.config.matches_module(layer_name):
+        #     print("{} not present in config".format(layer_name))
+        #     continue
 
-        layer_modality = model.get_layer_modality(layer_name)
-        assert layer_modality in ["vision", "text"]
-        for modality in modalities:
-            if layer_modality == "vision": # In the vision space of the model
-                if modality == "vision":
-                    modality_embedding = np.copy(module_embedding)
-                    n_embeddings = None
-                    module_name = layer_name
-                elif modality == "text":
-                    pass
-                else: # text + vision
-                    continue # Because there is no additional text in the vision layers, skip
-            elif layer_modality == "text": # In the text space of the model
-                if modality == "vision":
-                    modality_embedding, n_embeddings = db_utils.extract_visual_embeddings(
-                        input_ids=input_ids,
-                        llm_embeddings=module_embedding,
-                        image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
-                        same_shapes=module_embedding_same_shapes)
-                    module_name = layer_name + "-" + modality
-                elif modality == "text":
-                    pass
-                else: # text + vision
-                    # Do nothing special because we want both text + vision
-                    modality_embedding = np.copy(module_embedding)
-                    n_embeddings = None  # if None, compute mean embedding over whole sequence
-                    module_name = layer_name
-            # Calculate mean embedding
-            mean_embeddings = db_utils.compute_mean_embeddings(
-                embeddings=modality_embedding,
-                n_embeddings=n_embeddings)
+        # # This may take a long time if the data is not stored in memory recently
+        # module_embedding = db_utils.get_embeddings_by_layer(
+        #     db_path=database_path,
+        #     layer_name=layer_name
+        # )
+        # # Try to get module embeddings as np.array. Will throw an error if mismatched shapes
+        # try:
+        #     module_embedding, module_embedding_same_shapes = db_utils.unwrap_embeddings(module_embedding)
+        # except Exception as e:
+        #     print(layer_name, module_embedding)
 
-            # Calculate similarities of pairs of images
-            module_sim = db_utils.cosine_similarity_numpy(mean_embeddings, mean_embeddings)
-            # Assert similarity is symmetric
-            assert np.array_equal(module_sim, module_sim.T)
+        # layer_modality = model.get_layer_modality(layer_name)
+        # assert layer_modality in ["vision", "text"]
+        # for modality in modalities:
+        #     if layer_modality == "vision": # In the vision space of the model
+        #         if modality == "vision":
+        #             modality_embedding = np.copy(module_embedding)
+        #             n_embeddings = None
+        #             module_name = layer_name
+        #         elif modality == "text":
+        #             pass
+        #         else: # text + vision
+        #             continue # Because there is no additional text in the vision layers, skip
+        #     elif layer_modality == "text": # In the text space of the model
+        #         if modality == "vision":
+        #             modality_embedding, n_embeddings = db_utils.extract_visual_embeddings(
+        #                 input_ids=input_ids,
+        #                 llm_embeddings=module_embedding,
+        #                 image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
+        #                 same_shapes=module_embedding_same_shapes)
+        #             module_name = layer_name + "-" + modality
+        #         elif modality == "text":
+        #             pass
+        #         else: # text + vision
+        #             # Do nothing special because we want both text + vision
+        #             modality_embedding = np.copy(module_embedding)
+        #             n_embeddings = None  # if None, compute mean embedding over whole sequence
+        #             module_name = layer_name
+        #     # Calculate mean embedding
+        #     mean_embeddings = db_utils.compute_mean_embeddings(
+        #         embeddings=modality_embedding,
+        #         n_embeddings=n_embeddings)
 
-            # Select only Upper Triangular Matrix
-            n_samples = module_sim.shape[0]
-            ut_idxs = np.triu_indices(n_samples, k=1)
-            sim_values = module_sim[ut_idxs]
-            assert len(sim_values) == n_samples * (n_samples - 1) / 2
+        #     # Calculate similarities of pairs of images
+        #     module_sim = db_utils.cosine_similarity_numpy(mean_embeddings, mean_embeddings)
+        #     # Assert similarity is symmetric
+        #     assert np.array_equal(module_sim, module_sim.T)
+
+        #     # Select only Upper Triangular Matrix
+        #     n_samples = module_sim.shape[0]
+        #     ut_idxs = np.triu_indices(n_samples, k=1)
+        #     sim_values = module_sim[ut_idxs]
+            # assert len(sim_values) == n_samples * (n_samples - 1) / 2
 
             # Store values in list
-            module_names.append(module_name)
-            module_embeddings.append(mean_embeddings)
-            module_similarities.append(sim_values)
+            # module_names.append(module_name)
+            # module_embeddings.append(mean_embeddings)
+            # module_similarities.append(sim_values)
 
     return (module_names, module_embeddings, module_similarities)
 

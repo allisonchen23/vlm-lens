@@ -33,7 +33,7 @@ class QwenModel(ModelBase):
     def get_vision_key(self) -> str:
         return "visual"
 
-    def unwrap_qkv(self):
+    def get_unwrap_qkv_fn(self):
         """Returns a function that will split up the QKV matrix"""
         def _unwrap(qkv_matrix):
             assert len(qkv_matrix.shape) in (2, 3) # Sequence Length x Dim
