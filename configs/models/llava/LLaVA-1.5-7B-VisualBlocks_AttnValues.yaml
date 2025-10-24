@@ -1,0 +1,17 @@
+architecture: llava
+model_path: llava-hf/llava-1.5-7b-hf
+model:
+  - torch_dtype: auto
+preprocess:
+  - resize: True
+  - width: 336
+  - height: 336
+output_db: ../output/LLaVA-1.5-7B/AttentionValues.db
+input_dir: ../data_local/coco/cocoval_50.txt
+prompt: "Describe this image in one sentence."
+pooling_method: None
+modules:
+  - vision_tower.vision_model.encoder.layers.\d{1,2}.self_attn.v_proj
+  - multi_modal_projector
+  - language_model.model.layers.\d{1,2}.self_attn.v_proj
+  - language_model.model.norm
