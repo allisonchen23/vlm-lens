@@ -11,6 +11,79 @@ import visualizations, utils
 AVAILABLE_MODALITIES = ['text', 'vision', 'text+vision']
 EPS = 1e-4
 
+def get_embedding(database_path,
+                  layer_name):
+    """
+    Given DB path to .db file or directory and layer name, return embeddings stored
+
+    Arg(s):
+        database_path : str
+        layer_name : str
+
+    Returns:
+        3D (n_images x n_tokens x n_dim) np.ndarray or list[2D np.ndarray], boolean
+    """
+    if database_path.endswith(".db"):
+        module_embedding = db_utils.get_embeddings_by_layer(
+            db_path=database_path,
+            layer_name=layer_name)
+        # Try to get module embeddings as np.array. Will throw an error if mismatched shapes
+        try:
+            module_embedding, module_embedding_same_shapes = db_utils.unwrap_embeddings(module_embedding)
+        except Exception as e:
+            print(layer_name, module_embedding)
+    else: # Is a directory hopefully
+        filepath = os.path.join(database_path, "{}.npy".format(layer_name))
+        if not os.path.exists(filepath):
+            raise ValueError("File at {} does not exist".format(filepath))
+        module_embedding = utils.read_file(filepath)
+        module_embedding_same_shapes = True # If stored as a np.ndarray, representations for images must have same shape
+    return module_embedding, module_embedding_same_shapes
+
+def extract_modality(layer_modality,
+                     modality,
+                     module_embedding,
+                     module_name,
+                     image_token_id=None,
+                     input_ids=None,
+                     module_embedding_same_shapes=None):
+    """
+
+    Arg(s):
+        layer_modality : str
+            modality of current layer ["text", "vision"]
+        modality : str
+            desired modality ["text", "vision", "text+vision"]
+    """
+    if layer_modality == "vision": # In the vision space of the model
+        if modality == "vision":
+            modality_embedding = np.copy(module_embedding)
+            n_embeddings = None
+            modality_name = module_name
+        elif modality == "text":
+            pass
+        else: # text + vision
+            return
+    elif layer_modality == "text": # In the text space of the model
+        if modality == "vision":
+            assert input_ids is not None and \
+                image_token_id is not None and \
+                module_embedding_same_shapes is not None
+            modality_embedding, n_embeddings = db_utils.extract_visual_embeddings(
+                input_ids=input_ids,
+                llm_embeddings=module_embedding,
+                image_token_id=image_token_id,
+                same_shapes=module_embedding_same_shapes)
+            modality_name =  module_name + "-{}".format(modality)
+        elif modality == "text":
+            pass
+        else: # text + vision
+            # Do nothing special because we want both text + vision
+            modality_embedding = np.copy(module_embedding)
+            n_embeddings = None  # if None, compute mean embedding over whole sequence
+            modality_name = module_name
+    return modality_name, modality_embedding, n_embeddings
+
 def compute_image_pair_similarity_at_layer(model,
                                            layer_name,
                                            database_path,
@@ -41,21 +114,25 @@ def compute_image_pair_similarity_at_layer(model,
         return
 
     # This may take a long time if the data is not stored in memory recently
-    if database_path.endswith(".db"):
-        module_embedding = db_utils.get_embeddings_by_layer(
-            db_path=database_path,
-            layer_name=layer_name)
-        # Try to get module embeddings as np.array. Will throw an error if mismatched shapes
-        try:
-            module_embedding, module_embedding_same_shapes = db_utils.unwrap_embeddings(module_embedding)
-        except Exception as e:
-            print(layer_name, module_embedding)
-    else: # Is a directory hopefully
-        filepath = os.path.join(database_path, "{}.npy".format(layer_name))
-        if not os.path.exists(filepath):
-            raise ValueError("File at {} does not exist".format(filepath))
-        module_embedding = utils.read_file(filepath)
-        module_embedding_same_shapes = True # If stored as a np.ndarray, representations for images must have same shape
+    module_embedding, module_embedding_same_shapes = get_embedding(
+        database_path=database_path,
+        layer_name=layer_name)
+
+    # if database_path.endswith(".db"):
+    #     module_embedding = db_utils.get_embeddings_by_layer(
+    #         db_path=database_path,
+    #         layer_name=layer_name)
+    #     # Try to get module embeddings as np.array. Will throw an error if mismatched shapes
+    #     try:
+    #         module_embedding, module_embedding_same_shapes = db_utils.unwrap_embeddings(module_embedding)
+    #     except Exception as e:
+    #         print(layer_name, module_embedding)
+    # else: # Is a directory hopefully
+    #     filepath = os.path.join(database_path, "{}.npy".format(layer_name))
+    #     if not os.path.exists(filepath):
+    #         raise ValueError("File at {} does not exist".format(filepath))
+    #     module_embedding = utils.read_file(filepath)
+    #     module_embedding_same_shapes = True # If stored as a np.ndarray, representations for images must have same shape
 
 
     module_name = layer_name
@@ -81,30 +158,38 @@ def compute_image_pair_similarity_at_layer(model,
     module_embeddings = []
     module_sims = []
     for modality in modalities:
-        if layer_modality == "vision": # In the vision space of the model
-            if modality == "vision":
-                modality_embedding = np.copy(module_embedding)
-                n_embeddings = None
-                modality_name = module_name
-            elif modality == "text":
-                pass
-            else: # text + vision
-                continue # Because there is no additional text in the vision layers, skip
-        elif layer_modality == "text": # In the text space of the model
-            if modality == "vision":
-                modality_embedding, n_embeddings = db_utils.extract_visual_embeddings(
-                    input_ids=input_ids,
-                    llm_embeddings=module_embedding,
-                    image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
-                    same_shapes=module_embedding_same_shapes)
-                modality_name =  module_name + "-{}".format(modality)
-            elif modality == "text":
-                pass
-            else: # text + vision
-                # Do nothing special because we want both text + vision
-                modality_embedding = np.copy(module_embedding)
-                n_embeddings = None  # if None, compute mean embedding over whole sequence
-                modality_name = module_name
+        modality_name, modality_embedding, n_embeddings = extract_modality(
+            layer_modality=layer_modality,
+            modality=modality,
+            module_embedding=module_embedding,
+            module_name=module_name,
+            image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
+            input_ids=input_ids,
+            module_embedding_same_shapes=module_embedding_same_shapes)
+        # if layer_modality == "vision": # In the vision space of the model
+        #     if modality == "vision":
+        #         modality_embedding = np.copy(module_embedding)
+        #         n_embeddings = None
+        #         modality_name = module_name
+        #     elif modality == "text":
+        #         pass
+        #     else: # text + vision
+        #         continue # Because there is no additional text in the vision layers, skip
+        # elif layer_modality == "text": # In the text space of the model
+        #     if modality == "vision":
+        #         modality_embedding, n_embeddings = db_utils.extract_visual_embeddings(
+        #             input_ids=input_ids,
+        #             llm_embeddings=module_embedding,
+        #             image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
+        #             same_shapes=module_embedding_same_shapes)
+        #         modality_name =  module_name + "-{}".format(modality)
+        #     elif modality == "text":
+        #         pass
+        #     else: # text + vision
+        #         # Do nothing special because we want both text + vision
+        #         modality_embedding = np.copy(module_embedding)
+        #         n_embeddings = None  # if None, compute mean embedding over whole sequence
+        #         modality_name = module_name
 
         # Calculate mean embedding
         mean_embeddings = db_utils.compute_mean_embeddings(
