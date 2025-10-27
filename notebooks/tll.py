@@ -79,7 +79,7 @@ def filter_images(data_dir,
 
 # %%
 sys.argv = ['notebooks/get_representations.ipynb',
-            '--config', '../configs/models/qwen/Qwen2-VL-7B-Instruct-TLL-Left.yaml']
+            '--config', '../configs/models/qwen/Qwen2-VL-7B-Instruct-TLL-Right.yaml']
 
 config = Config()
 
@@ -115,8 +115,9 @@ if proceed:
 else:
     utils.informal_log("Not overwriting file at {}".format(left_db_path))
 
-save_embeddings_npy(
+db_utils.save_embeddings_npy(
     db_path=left_db_path,
+    layer_names=layer_names,
     overwrite=False)
 
 # # %% [markdown]

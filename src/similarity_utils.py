@@ -188,6 +188,7 @@ def compute_image_pair_similarities(database_path,
                                     model,
                                     layer_names=None,
                                     modalities=['visual'],
+                                    elementwise_similarity=False,
                                     # Parameters for unwrapping attention
                                     attn_component=None):
     '''
@@ -252,6 +253,7 @@ def compute_image_pair_similarities(database_path,
                 database_path=database_path,
                 modalities=modalities,
                 input_ids=input_ids,
+                elementwise_similarity=elementwise_similarity,
                 unwrap_fn=unwrap_fn,
                 attn_component=attn_component)
 
