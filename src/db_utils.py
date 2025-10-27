@@ -7,12 +7,18 @@ from tqdm import tqdm
 
 import utils
 
-def cosine_similarity_numpy(a, b):
+def cosine_similarity_numpy(a,
+                            b,
+                            elementwise=False):
     """Calculate cosine similarity between two vectors or matrices using numpy with robust error handling.
 
     Arg(s):
         a : D-dim np.array or B x D np.array
         b : D-dim np.array or B x D np.array
+        elementwise : bool
+            Only applicable if a and b are 2D arrays
+            If True, only compute similarities of elements at same location.
+            Otherwise, compute all pairwise cosine similarities
 
     Returns:
         int (if a and b are 1D) or B x B np.array (if a and b are 2D)
@@ -45,8 +51,13 @@ def cosine_similarity_numpy(a, b):
 
         normalized_a = a / norm_a
         normalized_b = b / norm_b
-
-        return np.dot(normalized_a, normalized_b.T)
+        if elementwise:
+            # Compute element-wise multiplication then sum over D dimension for
+            # element-wise dot product
+            return np.sum(normalized_a * normalized_b, axis=1)
+        else:
+            # Compute pairwise dot product
+            return np.dot(normalized_a, normalized_b.T)
     else:
         raise ValueError("Cosine similarity not supported for {}-dimensional matrices".format(len(a.shape)))
 
@@ -104,7 +115,7 @@ def get_all_embeddings(db_path="output/llava.db", device='cpu'):
 
     embeddings_data = []
 
-    for row_id, (layer, tensor_bytes, label) in enumerate(results):
+    for row_id, (layer, tensor_bytes, label) in enumerate(tqdm(results)):
         try:
             # Use PyTorch to load tensor from BytesIO with weights_only=False
             tensor_obj = torch.load(io.BytesIO(tensor_bytes), map_location=device, weights_only=False)
@@ -114,6 +125,9 @@ def get_all_embeddings(db_path="output/llava.db", device='cpu'):
             if tensor is None:
                 continue
 
+            # Convert dtype from bfloat16 -> float32 if needed
+            if tensor.dtype == torch.bfloat16:
+                tensor = tensor.to(torch.float32)
             # Convert to numpy for analysis
             if tensor.requires_grad:
                 tensor_np = tensor.detach().cpu().numpy()
@@ -125,6 +139,7 @@ def get_all_embeddings(db_path="output/llava.db", device='cpu'):
         except Exception as e:
             print(f"Warning: Could not deserialize tensor at row {row_id}: {e}")
             continue
+
 
     return embeddings_data
 
@@ -191,8 +206,7 @@ def unwrap_embeddings(embeddings,
         same_shapes = True
     except Exception as e:
         print("Could not squeeze embeddings into 2D array: {}".format(e))
-        print(tuple(map(list, zip(*embeddings))))
-        unwrapped = tuple(map(list, zip(*embeddings)))[1]
+        unwrapped = tuple(map(list, zip(*embeddings)))[idx]
         same_shapes = False
     return unwrapped, same_shapes
 

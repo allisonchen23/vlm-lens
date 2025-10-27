@@ -89,6 +89,7 @@ def compute_image_pair_similarity_at_layer(model,
                                            database_path,
                                            modalities,
                                            input_ids,
+                                           elementwise_similarity=False,
                                            # Parameters for unwrapping attention
                                            unwrap_fn=None,
                                            attn_component=None):
@@ -118,23 +119,6 @@ def compute_image_pair_similarity_at_layer(model,
         database_path=database_path,
         layer_name=layer_name)
 
-    # if database_path.endswith(".db"):
-    #     module_embedding = db_utils.get_embeddings_by_layer(
-    #         db_path=database_path,
-    #         layer_name=layer_name)
-    #     # Try to get module embeddings as np.array. Will throw an error if mismatched shapes
-    #     try:
-    #         module_embedding, module_embedding_same_shapes = db_utils.unwrap_embeddings(module_embedding)
-    #     except Exception as e:
-    #         print(layer_name, module_embedding)
-    # else: # Is a directory hopefully
-    #     filepath = os.path.join(database_path, "{}.npy".format(layer_name))
-    #     if not os.path.exists(filepath):
-    #         raise ValueError("File at {} does not exist".format(filepath))
-    #     module_embedding = utils.read_file(filepath)
-    #     module_embedding_same_shapes = True # If stored as a np.ndarray, representations for images must have same shape
-
-
     module_name = layer_name
     # Might need to unwrap attention QKV
     if unwrap_fn is not None:
@@ -157,6 +141,8 @@ def compute_image_pair_similarity_at_layer(model,
     module_names = []
     module_embeddings = []
     module_sims = []
+
+    # Iterate through desired modalities (text, vision, text+vision)
     for modality in modalities:
         modality_name, modality_embedding, n_embeddings = extract_modality(
             layer_modality=layer_modality,
@@ -166,30 +152,6 @@ def compute_image_pair_similarity_at_layer(model,
             image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
             input_ids=input_ids,
             module_embedding_same_shapes=module_embedding_same_shapes)
-        # if layer_modality == "vision": # In the vision space of the model
-        #     if modality == "vision":
-        #         modality_embedding = np.copy(module_embedding)
-        #         n_embeddings = None
-        #         modality_name = module_name
-        #     elif modality == "text":
-        #         pass
-        #     else: # text + vision
-        #         continue # Because there is no additional text in the vision layers, skip
-        # elif layer_modality == "text": # In the text space of the model
-        #     if modality == "vision":
-        #         modality_embedding, n_embeddings = db_utils.extract_visual_embeddings(
-        #             input_ids=input_ids,
-        #             llm_embeddings=module_embedding,
-        #             image_token_id=IMAGE_TOKEN_IDS[model.config.architecture],
-        #             same_shapes=module_embedding_same_shapes)
-        #         modality_name =  module_name + "-{}".format(modality)
-        #     elif modality == "text":
-        #         pass
-        #     else: # text + vision
-        #         # Do nothing special because we want both text + vision
-        #         modality_embedding = np.copy(module_embedding)
-        #         n_embeddings = None  # if None, compute mean embedding over whole sequence
-        #         modality_name = module_name
 
         # Calculate mean embedding
         mean_embeddings = db_utils.compute_mean_embeddings(
@@ -197,18 +159,23 @@ def compute_image_pair_similarity_at_layer(model,
             n_embeddings=n_embeddings)
 
         # Calculate similarities of pairs of images
-        module_sim = db_utils.cosine_similarity_numpy(mean_embeddings, mean_embeddings)
+        module_sim = db_utils.cosine_similarity_numpy(
+            mean_embeddings,
+            mean_embeddings,
+            elementwise=elementwise_similarity)
 
+        if elementwise_similarity:
+            sim_values = module_sim
+        else:
+            # Assert similarity is symmetric
+            assert (module_sim - module_sim.T < EPS).all()
+            # assert np.array_equal(module_sim, module_sim.T), "{}".format(np.mean(module_sim - module_sim.T))
 
-        # Assert similarity is symmetric
-        assert (module_sim - module_sim.T < EPS).all()
-        # assert np.array_equal(module_sim, module_sim.T), "{}".format(np.mean(module_sim - module_sim.T))
-
-        # Select only Upper Triangular Matrix
-        n_samples = module_sim.shape[0]
-        ut_idxs = np.triu_indices(n_samples, k=1)
-        sim_values = module_sim[ut_idxs]
-        assert len(sim_values) == n_samples * (n_samples - 1) / 2
+            # Select only Upper Triangular Matrix
+            n_samples = module_sim.shape[0]
+            ut_idxs = np.triu_indices(n_samples, k=1)
+            sim_values = module_sim[ut_idxs]
+            assert len(sim_values) == n_samples * (n_samples - 1) / 2
 
         # Add to list
         module_names.append(modality_name)
