@@ -78,114 +78,56 @@ def filter_images(data_dir,
 # ### Left Images
 
 # %%
-sys.argv = ['notebooks/get_representations.ipynb',
-            '--config', '../configs/models/qwen/Qwen2-VL-7B-Instruct-TLL-Right.yaml']
+def run_model(config_path):
+    sys.argv = ['notebooks/get_representations.ipynb',
+                '--config', config_path]
 
-config = Config()
+    config = Config()
 
-# %%
-model = get_model(config.architecture, config)
-
-
-n_modules = 0
-layer_names = []
-for name, module in model.model.named_modules():
-    if model.config.matches_module(name):
-        print(name)
-        layer_names.append(name)
-        n_modules += 1
-utils.informal_log("{} modules matched".format(n_modules))
-
-# %%
-# Run model -- first checking if we would overwrite anything
-left_db_path = model.config.output_db
-utils.informal_log("Database path: {}".format(left_db_path))
-proceed = True
-if os.path.exists(left_db_path):
-    proceed = False
-    # response = input("File exists at {}. Are you sure you want to overwrite? (Y/N)".format(left_db_path))
-    # if response.lower() != "y":
-    #     proceed = False
-    # else:
-    #     os.remove(left_db_path)
-
-if proceed:
-    # Run model on images
-    model.run(save_tokens=True)
-else:
-    utils.informal_log("Not overwriting file at {}".format(left_db_path))
-
-db_utils.save_embeddings_npy(
-    db_path=left_db_path,
-    layer_names=layer_names,
-    overwrite=False)
-
-# # %% [markdown]
-# # ### Right Images
-
-# # %%
-# sys.argv = ['notebooks/get_representations.ipynb',
-#             '--config', '../configs/models/qwen/Qwen2-VL-7B-Instruct-TLL-Right.yaml']
-
-# config = Config()
-
-# # %%
-# model = get_model(config.architecture, config)
+    # %%
+    model = get_model(config.architecture, config)
 
 
-# n_modules = 0
-# layer_names = []
-# for name, module in model.model.named_modules():
-#     if model.config.matches_module(name):
-#         print(name)
-#         layer_names.append(name)
-#         n_modules += 1
-# utils.informal_log("{} modules matched".format(n_modules))
+    n_modules = 0
+    layer_names = []
+    for name, module in model.model.named_modules():
+        if model.config.matches_module(name):
+            print(name)
+            layer_names.append(name)
+            n_modules += 1
+    utils.informal_log("{} modules matched".format(n_modules))
 
-# # %%
-# # Run model -- first checking if we would overwrite anything
-# right_db_path = model.config.output_db
-# utils.informal_log("Database path: {}".format(right_db_path))
-# proceed = True
-# if os.path.exists(right_db_path):
-#     response = input("File exists at {}. Are you sure you want to overwrite? (Y/N)".format(right_db_path))
-#     if response.lower() != "y":
-#         proceed = False
-#     else:
-#         os.remove(right_db_path)
+    # %%
+    # Run model -- first checking if we would overwrite anything
+    left_db_path = model.config.output_db
+    utils.informal_log("Database path: {}".format(left_db_path))
+    proceed = True
+    if os.path.exists(left_db_path):
+        proceed = False
+        # response = input("File exists at {}. Are you sure you want to overwrite? (Y/N)".format(left_db_path))
+        # if response.lower() != "y":
+        #     proceed = False
+        # else:
+        #     os.remove(left_db_path)
 
-# if proceed:
-#     # Run model on images
-#     model.run(save_tokens=True)
-# else:
-#     utils.informal_log("Not overwriting file at {}".format(right_db_path))
+    if proceed:
+        # Run model on images
+        model.run(save_tokens=True)
+    else:
+        utils.informal_log("Not overwriting file at {}".format(left_db_path))
 
-# # %% [markdown]
-# # ## Get Embeddings and Compute Similarities
-
-# # %%
-# left_embeddings_data = db_utils.get_all_embeddings(
-#     db_path=left_db_path,
-#     device='cuda')
+    db_utils.save_embeddings_npy(
+        db_path=left_db_path,
+        layer_names=layer_names,
+        overwrite=False)
 
 
-# left_layer_names = db_utils.unwrap_embeddings(
-#     embeddings=left_embeddings_data,
-#     idx=0)
+utils.informal_log("Running model on Left Images of TLL")
+run_model(
+    config_path="../configs/models/qwen/Qwen2-VL-7B-Instruct-TLL-Left.yaml"
+)
 
-# left_embeddings = db_utils.unwrap_embeddings(
-#     embeddings=left_embeddings_data,
-#     idx=1)
-
-# # %%
-# (right_layer_names, right_embeddings, _) = db_utils.get_all_embeddings(
-#     db_path=right_db_path,
-#     device='cuda')
-
-# # %%
-# print(left_embeddings[2][:5])
-
-# # %%
-
-
-
+utils.informal_log("Running model on Right Images of TLL")
+run_model(
+    config_path="../configs/models/qwen/Qwen2-VL-7B-Instruct-TLL-Right.yaml"
+)

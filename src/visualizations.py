@@ -773,7 +773,8 @@ def histogram(data,
     if colors is None:
         colors = [None for i in range(n_data)]
 
-    if type(data) == np.ndarray and len(data.shape) == 1:
+    # 1D data
+    if (type(data) == np.ndarray or type(data) == list) and len(data.shape) == 1:
         if labels[0] is None:
                 hist_return = ax.hist(data,
                     weights=weights,
