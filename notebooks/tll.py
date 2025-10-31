@@ -99,25 +99,25 @@ def run_model(config_path):
 
     # %%
     # Run model -- first checking if we would overwrite anything
-    left_db_path = model.config.output_db
-    utils.informal_log("Database path: {}".format(left_db_path))
+    db_path = model.config.output_db
+    utils.informal_log("Database path: {}".format(db_path))
     proceed = True
-    if os.path.exists(left_db_path):
+    if os.path.exists(db_path):
         proceed = False
-        # response = input("File exists at {}. Are you sure you want to overwrite? (Y/N)".format(left_db_path))
+        # response = input("File exists at {}. Are you sure you want to overwrite? (Y/N)".format(db_path))
         # if response.lower() != "y":
         #     proceed = False
         # else:
-        #     os.remove(left_db_path)
+        #     os.remove(db_path)
 
     if proceed:
         # Run model on images
         model.run(save_tokens=True)
     else:
-        utils.informal_log("Not overwriting file at {}".format(left_db_path))
+        utils.informal_log("Not overwriting file at {}".format(db_path))
 
     db_utils.save_embeddings_npy(
-        db_path=left_db_path,
+        db_path=db_path,
         layer_names=layer_names,
         overwrite=False)
 

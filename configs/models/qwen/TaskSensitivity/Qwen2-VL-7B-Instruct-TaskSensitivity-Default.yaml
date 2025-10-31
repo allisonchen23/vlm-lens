@@ -9,7 +9,7 @@ preprocess:
 output_db: ../output/TaskSensitivity/Qwen2-VL-7B-Instruct/Default.db
 input_dir: ../data_local/people
 prompt: ""
-pooling_method: None
+pooling_method: last
 modules:
   - visual.merger
   - model.layers.0

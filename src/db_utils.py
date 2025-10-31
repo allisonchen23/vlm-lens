@@ -58,6 +58,18 @@ def cosine_similarity_numpy(a,
         else:
             # Compute pairwise dot product
             return np.dot(normalized_a, normalized_b.T)
+    elif len(a.shape) == 3:
+        norm_a = np.linalg.norm(a, axis=-1, keepdims=True)
+        norm_b = np.linalg.norm(b, axis=-1, keepdims=True)
+
+        normalized_a = a / norm_a
+        normalized_b = b / norm_b
+
+        if elementwise:
+            raise ValueError("Elementwise dot product for n_dim == 3 not yet supported")
+        else:
+            return np.matmul(normalized_a, normalized_b.transpose(0, 2, 1))
+
     else:
         raise ValueError("Cosine similarity not supported for {}-dimensional matrices".format(len(a.shape)))
 

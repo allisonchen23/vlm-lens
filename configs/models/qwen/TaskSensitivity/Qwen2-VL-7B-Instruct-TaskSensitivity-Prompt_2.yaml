@@ -13,10 +13,10 @@ modules:
 - model.layers.25
 - model.layers.27
 - model.norm
-output_db: ../output/TaskSensitivity/Qwen2-VL-7B-Instruct/Prompt_1.db
-pooling_method: None
+output_db: ../output/TaskSensitivity/Qwen2-VL-7B-Instruct/Prompt_2.db
+pooling_method: last
 preprocess:
 - resize: true
 - width: 336
 - height: 336
-prompt: What is the color of this person's clothes?
+prompt: What are the (x, y) coordinates of this person's left eye?
