@@ -13,10 +13,10 @@ modules:
 - model.layers.25
 - model.layers.27
 - model.norm
-output_db: ../output/TaskSensitivity/Qwen2-VL-7B-Instruct/Prompt_9.db
-pooling_method: last
+output_db: ../output/TaskSensitivity/AverageToken/Qwen2-VL-7B-Instruct/Prompt_4.db
+pooling_method: mean
 preprocess:
 - resize: true
 - width: 336
 - height: 336
-prompt: What does (or did) this person do for a living?
+prompt: What is the person's hair texture?
