@@ -1,0 +1,18 @@
+architecture: qwen
+model_path: Qwen/Qwen2-VL-7B-Instruct
+model:
+  - torch_dtype: auto
+preprocess:
+  - resize: True
+  - width: 336
+  - height: 336
+output_db: ../output/TLL/Qwen2-VL-7B-Instruct/TLL-Left.db
+input_dir: ../data_local/tll/filtered_left_paths.txt
+prompt: "This is an image."
+pooling_method: None
+modules:
+  - visual.blocks.31
+  - visual.merger
+  - model.layers.27
+  - model.norm
+
