@@ -15,6 +15,7 @@ import pickle
 from PIL import Image
 import shutil
 import torch
+import yaml
 
 
 def select_tensors(
@@ -67,6 +68,9 @@ def read_file(filepath):
         return load_image(filepath)
     elif filepath.endswith('.npy'):
         return np.load(filepath)
+    elif filepath.endswith('.yaml'):
+        with open(filepath, 'r') as file:
+            return yaml.safe_load(file)
     else:
         raise ValueError("File type '.{}' not supported".format(filepath.split('.')[-1]))
 
@@ -86,6 +90,9 @@ def write_file(data, filepath, overwrite=False, quiet=False, save_index=False):
             save_image(data, filepath)
         elif filepath.endswith('.npy'):
             np.save(filepath, data, allow_pickle=False)
+        elif filepath.endswith('.yaml'):
+            with open(filepath, 'w') as file:
+                yaml.dump(data, file, default_flow_style=False)
         else:
             raise ValueError("File type '.{}' not supported".format(filepath.split('.')[-1]))
         if not quiet:

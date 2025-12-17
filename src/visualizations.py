@@ -1446,23 +1446,70 @@ def pie_chart(sizes,
 
     return fig, ax
 
-def confusion_matrix(cmat,
-                     cmat_labels,
-                     title=None,
-                     save_path=None,
-                     show=True):
-    disp = metrics.ConfusionMatrixDisplay(
-        cmat,
-        display_labels=cmat_labels)
-    if len(cmat_labels) > 20:
-        h = len(cmat_labels) * 4.8 / 15
-        w = len(cmat_labels) * 6.4 / 15
-    else:
-        h = 4.8
-        w = 6.4
+def matrix(mat,
+           mat_labels,
+           fmt=".2f",
+           fig_size=None,
+           cbar_lims=None,
+           title=None,
+           save_path=None,
+           show=True):
 
-    fig, ax = plt.subplots(figsize=(w, h))
-    disp.plot(ax=ax, xticks_rotation=80)
+    fig, ax = plt.subplots(figsize=fig_size)
+    im = ax.imshow(mat, interpolation='nearest')
+
+    # Add colorbar
+    cbar = ax.figure.colorbar(im, ax=ax, shrink=0.7)
+    cbar.ax.set_ylabel("Value", rotation=-90, va="bottom")
+    if cbar_lims is not None:
+        im = ax.images[0]
+        vmin, vmax = cbar_lims
+        im.set_clim(vmin=vmin, vmax=vmax)
+
+    # Annotate cells
+    threshold = (vmax - vmin) / 2 + vmin
+    for i in range(len(mat_labels)):
+        for j in range(len(mat_labels)):
+            ax.text(j, i, format(mat[i, j], fmt),
+                    ha="center", va="center",
+                    color="white" if mat[i, j] < threshold else "black")
+
+    # Add title, y and x labels
+    ax.set_title(title)
+    ax.set_xticks(np.arange(len(mat_labels)))
+    ax.set_yticks(np.arange(len(mat_labels)))
+    fig.autofmt_xdate()
+    ax.set_xticklabels(mat_labels)
+    ax.set_yticklabels(mat_labels)
+    # disp = metrics.ConfusionMatrixDisplay(
+    #     mat,
+    #     display_labels=mat_labels)
+    # if fig_size is None:
+    #     if len(mat_labels) > 20:
+    #         h = len(mat_labels) * 4.8 / 15
+    #         w = len(mat_labels) * 6.4 / 15
+    #     else:
+    #         h = 4.8
+    #         w = 6.4
+    #     fig_size = (w, h)
+
+    # fig, ax = plt.subplots(figsize=fig_size)
+    # disp.plot(ax=ax, xticks_rotation=80)
+
+    # If block modified from GPT output
+    # if cbar_lims is not None:
+    #     im = ax.images[0]
+    #     vmin, vmax = cbar_lims
+    #     im.set_clim(vmin=vmin, vmax=vmax)
+
+        # Compute threshold based on midpoint of color scale
+        # threshold = (vmax - vmin) / 2 + vmin
+
+        # Loop through the text elements added by ConfusionMatrixDisplay
+        # for text in disp.text_.ravel():
+        #     val = float(text.get_text())
+        #     # Use contrasting text color depending on the background intensity
+        #     text.set_color("white" if val < threshold else "black")
 
     if title is not None:
         ax.set_title(title)
@@ -1474,3 +1521,51 @@ def confusion_matrix(cmat,
         plt.show()
 
     return fig, ax
+
+# def matrix(mat,
+#            mat_labels,
+#            fig_size=None,
+#            cbar_lims=None,
+#            title=None,
+#            save_path=None,
+#            show=True):
+#     disp = metrics.ConfusionMatrixDisplay(
+#         mat,
+#         display_labels=mat_labels)
+#     if fig_size is None:
+#         if len(mat_labels) > 20:
+#             h = len(mat_labels) * 4.8 / 15
+#             w = len(mat_labels) * 6.4 / 15
+#         else:
+#             h = 4.8
+#             w = 6.4
+#         fig_size = (w, h)
+
+#     fig, ax = plt.subplots(figsize=fig_size)
+#     disp.plot(ax=ax, xticks_rotation=80)
+
+#     # If block modified from GPT output
+#     if cbar_lims is not None:
+#         im = ax.images[0]
+#         vmin, vmax = cbar_lims
+#         im.set_clim(vmin=vmin, vmax=vmax)
+
+#         # Compute threshold based on midpoint of color scale
+#         threshold = (vmax - vmin) / 2 + vmin
+
+#         # Loop through the text elements added by ConfusionMatrixDisplay
+#         for text in disp.text_.ravel():
+#             val = float(text.get_text())
+#             # Use contrasting text color depending on the background intensity
+#             text.set_color("white" if val < threshold else "black")
+
+#     if title is not None:
+#         ax.set_title(title)
+
+#     plt.tight_layout()
+#     if save_path is not None:
+#         plt.savefig(save_path)
+#     if show:
+#         plt.show()
+
+#     return fig, ax

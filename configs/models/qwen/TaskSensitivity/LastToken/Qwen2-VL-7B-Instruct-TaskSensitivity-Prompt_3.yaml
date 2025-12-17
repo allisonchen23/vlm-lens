@@ -1,0 +1,22 @@
+architecture: qwen
+input_dir: ../data_local/people
+model:
+- torch_dtype: auto
+model_path: Qwen/Qwen2-VL-7B-Instruct
+modules:
+- visual.merger
+- model.layers.0
+- model.layers.5
+- model.layers.10
+- model.layers.15
+- model.layers.20
+- model.layers.25
+- model.layers.27
+- model.norm
+output_db: ../output/TaskSensitivity/LastToken/Qwen2-VL-7B-Instruct/Prompt_3.db
+pooling_method: last
+preprocess:
+- resize: true
+- width: 336
+- height: 336
+prompt: What is the color of this person's clothes?
